@@ -9,6 +9,7 @@ XSetWindowAttributes* O_X11_Xlib_Struct
 XSizeHints *          O_X11_Xlib_Struct
 GLXContext            O_GLXContext
 GLXContextOrNull      O_GLXContextOrNull
+GLXContextImported    O_GLXContextImported
 Window                O_X11_Xlib_XID
 Pixmap                O_X11_Xlib_XID
 Cursor                O_X11_Xlib_XID
@@ -56,7 +57,7 @@ O_X11_Xlib_Struct
 INPUT
 O_X11_Xlib_Opaque
 	if (sv_isa($arg, \"X11::Xlib::@{[ $type =~ /(\w+)/ ]}\")) {
-		$var= ($type) SvPVX((SV*)SvRV($arg));
+		$var= ($type) SvIV((SV*)SvRV($arg));
 	} else {
 		croak( \"%s is not a %s\", \"$var\", \"X11::Xlib::@{[ $type =~ /(\w+)/ ]}\" );
 	}
@@ -67,8 +68,8 @@ O_X11_Xlib_Opaque
 
 INPUT
 O_GLXContext
-	if (sv_isa($arg, \"X11::GLX::Context\")) {
-		$var= ($type) SvPVX((SV*)SvRV($arg));
+	if (sv_isa($arg, \"X11::GLX::Context\") || sv_isa($arg, \"X11::GLX::Context::Imported\")) {
+		$var= ($type) SvIV((SV*)SvRV($arg));
 	} else {
 		croak( \"%s is not a %s\", \"$var\", \"X11::GLX::Context\" );
 	}
@@ -81,8 +82,20 @@ INPUT
 O_GLXContextOrNull
 	if (!SvOK($arg))
 		$var= NULL;
-	else if (sv_isa($arg, \"X11::GLX::Context\")) {
-		$var= ($type) SvPVX((SV*)SvRV($arg));
+	else if (sv_isa($arg, \"X11::GLX::Context\") || sv_isa($arg, \"X11::GLX::Context::Imported\")) {
+		$var= ($type) SvIV((SV*)SvRV($arg));
 	} else {
 		croak( \"%s is not a %s\", \"$var\", \"X11::GLX::Context\" );
 	}
+
+INPUT
+O_GLXContextImported
+	if (sv_isa($arg, \"X11::GLX::Context::Imported\")) {
+		$var= ($type) SvIV((SV*)SvRV($arg));
+	} else {
+		croak( \"%s is not a %s\", \"$var\", \"X11::GLX::Context::Imported\" );
+	}
+
+OUTPUT
+O_GLXContextImported
+	sv_setref_pv($arg, \"X11::GLX::Context::Imported\", (void*) $var);
