@@ -1,0 +1,460 @@
+package X11::GLX::DWIM;
+use X11::Xlib;
+use OpenGL;
+use Moo;
+use Log::Any '$log';
+
+# ABSTRACT - Do What I Mean, with OpenGL on X11
+
+=head1 SYNOPSIS
+
+  my $glx= X11::GLX::DWIM->new( \%options );
+  while (1) {
+    $glx->begin_frame();
+    my_custom_opengl_rendering();
+    $glx->end_frame();
+  }
+  # defaults above:
+  #   Connect to default X11 Display
+  #   32-bit RGBA visual, double buffered
+  #   rendering to full-screen window.  Direct-render if supported.
+
+=head1 DESCRIPTION
+
+This module wraps all of the relevant L<X11::Xlib> and L<X11::GLX> function
+calls needed to create the most common types of rendering target for OpenGL.
+
+=head1 ATTRIBUTES
+
+=head2 display
+
+Instance of L<X11::Xlib::Display>.  Lazy-built from C<$DISPLAY> environment
+var, or connects to localhost.
+
+=cut
+
+has display => ( is => 'lazy' );
+
+sub _build_display {
+	my $self= shift;
+	return X11::Xlib->new;
+}
+
+=head2 glx_version
+
+The GLX version number.  Read-only, lazy-built from L</display>.
+
+=cut
+
+has glx_version => ( is => 'lazy' );
+sub _build_glx_version {
+	X11::GLX::glXQueryVersion(shift->display, my $major, my $minor);
+	return [ $major, $minor ];
+}
+
+=head2 glx_extensions
+
+The set of extensions supported by this implementation of GLX.
+Read-only, lazy-built from L</display>.
+
+=cut
+
+has glx_extensions => ( is => 'lazy' );
+
+sub _build_glx_extensions {
+	X11::GLX::glXQueryExtensionsString(shift->display);
+}
+
+=head2 visual_info
+
+  X11::GLX::DWIM->new( visual_info => $vis )
+  X11::GLX::DWIM->new( visual_info => \@glx_vis_flags )
+  X11::GLX::DWIM->new( visual_info => \%visual_info_fields )
+
+Lazy-built, read-only.  Instance of L<X11::Xlib::XVisualInfo>.
+Can be initialized with an arrayref of parameters (integer codes) to pass to
+C<glXChooseVisual>, or with a hashref of fields to pass to the constructor of
+C<XVisualInfo>.
+
+=cut
+
+has _visual_info_args => ( is => 'ro', init_arg => 'visual_info' );
+has visual_info => ( is => 'lazy', init_arg => undef );
+
+sub _build_visual_info {
+	my $self= shift;
+	my $arg= $self->_visual_info_args;
+	return X11::GLX::glXChooseVisual($self->display, $self->screen)
+		unless $arg;
+	return X11::GLX::glXChooseVisual($self->display, $self->screen, $arg)
+		if ref $arg eq 'ARRAY';
+	return $self->display->visual_info($arg);
+}
+
+=head2 colormap
+
+Lazy-built, read-only.  Instance of L<X11::Xlib::Colormap>.  Defaults to a new
+colormap compatible with L</visual_info>.
+
+=cut
+
+has colormap => ( is => 'lazy' );
+sub _build_colormap {
+	my $self= shift;
+	$self->display->new_colormap($self->screen->root_window, $self->visual_info->visual);
+}
+
+=head2 glx_context
+
+An instance of L<X11::GLX::Context>.  You can also initialize it with a hash
+of arguments for the call to glXCreateContext:
+
+  $glx->glx_context({
+    direct => $bool,            # for direct rendering ("DRI")
+    shared => $context_or_xid,  # X11::GLX::Context, or the X11 ID of an indirect context
+  });
+
+If already initialized, this will destroy any previous context.
+
+If your server supports it, and your context is indirect, you can discover the
+X11 ID for a GLX context with:
+
+  my $xid= $glx->glx_context->id
+
+=cut
+
+has _glx_context_args => ( is => 'ro', init_arg => 'glx_context' );
+
+sub glx_context {
+	my $self= shift;
+	if (@_) {
+		my $val= shift;
+		if ($val && !ref($val)->isa('X11::GLX::Context')) {
+			$val= $self->_inflate_glx_context($val);
+		}
+		X11::GLX::glXDestroyContext($self->{glx_context})
+			if $self->{glx_context};
+		$self->{glx_context}= $val;
+	}
+	elsif (!exists $self->{glx_context}) {
+		$self->{glx_context}= $self->_inflate_glx_context($self->_glx_context_args);
+	}
+	$self->{glx_context};
+}
+
+sub _inflate_glx_context {
+	my ($self, $args)= @_;
+	$args ||= { direct => 1 };
+	ref($args) eq 'HASH' or croak "Don't know how to use $args as a glx_context";
+	my $direct= $args->{direct};
+	my $shared= $args->{shared};
+	
+	# If not shared, create context with default of direct-render
+	return X11::GLX::glXCreateContext($self->display, $self->visual_info, undef, defined $direct? $direct : 1)
+		unless defined $shared;
+	
+	if (!ref $shared || ref($shared)->isa('X11::Xlib::XID')) {
+		my $id= !ref($shared)? $shared : $shared->xid;
+		my $remote_cx= X11::GLX::glXImportContextEXT($self->display, $id)
+			or die "Can't import remote GLX context '$id'";
+		my $cx= X11::GLX::glXCreateContext($self->display, $self->visual_info, $remote_cx, defined $direct? $direct : 0);
+		glXFreeContextEXT($remote_cx);
+		return $cx;
+	}
+	elsif (ref($shared)->isa('X11::GLX::Context')) {
+		return X11::GLX::glXCreateContext($self->display, $self->visual_info, $shared, defined $direct? $direct : 0);
+	}
+	else {
+		croak "Don't know how to share GLX context with $shared";
+	}
+}
+
+=head2 target
+
+Pixmap or Window which OpenGL should render to. (C<glXMakeCurrent>).
+You can set this to an existing XID of a window or GLX pixmap,
+an object representing one (L<X11::Xlib::Window>, etc), or a hashref
+specifying parameters to either L</create_render_window>
+or L</create_render_pixmap>.  If lazy-built with no initializer, it defaults
+to a full-screen window.
+
+  $glx->target( $xid );                # existing window or GLX pixmap
+  $glx->target({ window => \%args });  # shortcut for create_render_window()
+  $glx->target({ pixmap => \%args });  # shortcut for create_render_pixmap()
+  $glx->target;                        # defaults to full-screen window
+
+=head2 has_target
+
+Returns true if the target has been initialized.  Use this to prevent
+triggering a lazy-build of the initial target.
+
+=cut
+
+has _target_args => ( is => 'rw', init_arg => 'target' );
+
+sub has_target { defined shift->{target} }
+
+sub target {
+	my $self= shift;
+	if (@_ || !exists $self->{target}) {
+		my $value;
+		if (@_ && !defined $_[0]) {
+			X11::GLX::glXMakeCurrent($self->display, 0, undef)
+				or croak "Can't un-set GLX target";
+			return ($self->{target}= undef);
+		}
+		my $value= $self->_inflate_target(@_? $_[0] : $self->_target_args);
+		X11::GLX::glXMakeCurrent($self->display, $value->xid, $self->glx_context)
+			or croak "Can't set target to $value, glXMakeCurrent failed";
+		$self->{target}= $value;
+		my ($w, $h)= $value->get_width_height;
+		OpenGL::glViewport(0, 0, $w, $h);
+		$self->apply_gl_projection if $self->gl_projection;
+	}
+	return $self->{target};
+}
+
+sub _inflate_target {
+	my ($self, $arg)= @_;
+	my $arg= $self->_target_args;
+	$arg ||= { window => 1 };
+	return !ref $arg? $self->display->get_cached_xobj($arg)
+		: ref($arg)->isa('X11::Xlib::XID')? $args
+		: ref($arg)->isa('HASH')? (
+			$arg->{window}? $self->create_render_window($arg->{window})
+			: $arg->{pixmap}? $self->create_render_pixmap($arg->{pixmap})
+			: croak "Expected target->{window} or target->{pixmap}"
+		)
+		: croak "Don't know how to set $arg as the GL rendering target";
+}
+
+=head2 gl_clear_bits
+
+The bits passed to C<glClear> in the convenience function L</begin_frame>.
+
+Defaults to GL_COLOR_BUFFER_BIT + GL_DEPTH_BUFFER_BIT
+
+=cut
+
+has gl_clear_bits     => ( is => 'lazy' );
+sub _build_gl_clear_bits {
+	return OpenGL::GL_COLOR_BUFFER_BIT|OpenGL::GL_DEPTH_BUFFER_BIT;
+}
+
+=head2 gl_projection
+
+If you're still rockin' the old-school OpenGL 1.4 matrix system, you can use
+this attribute to set up a quick projection matrix.  If the GLX context target
+is initialized, setting this attribute will immediately change the GL
+projection matrix.  Otherwise these settings are used as the default once that
+happens.
+
+See L</apply_gl_projection>
+
+=cut
+
+has gl_projection     => ( is => 'rw', trigger => \&_changed_gl_projection );
+sub _changed_gl_projection {
+	my ($self, $newval)= @_;
+	$self->apply_gl_projection if $newval && $self->has_target;
+}
+
+=head1 METHODS
+
+=head2 create_render_window
+
+
+
+=cut
+
+sub create_render_window {
+	my $self= shift;
+	my %args= @_ == 1 && ref($_[0]) eq 'HASH'? %{ $_[0] } : @_;
+	$args{x} ||= 0;
+	$args{y} ||= 0;
+	if (!$args{width} || !$args{height}) {
+		# Default to fullscreen dimensions. TODO: use xrandr instead of static screen dims
+		$args{width} ||= $self->screen->width  - $args{x};
+		$args{height} ||= $self->screen->height - $args{y};
+	}
+	$args{class}= X11::Xlib::InputOutput unless defined $args{class};
+	$args{visual} ||= $self->visual_info->visual;
+	$args{colormap} ||= $self->colormap;
+	$args{parent} ||= $self->screen->root_window;
+	$args{depth} ||= $self->visual_info->depth;
+	$args{min_width} ||= $args{width};
+	$args{min_height} ||= $args{height};
+	return $display->new_window(\%args);
+}
+
+sub create_render_pixmap {
+	my $self= shift;
+	my %args= @_ == 1 && ref($_[0]) eq 'HASH'? %{ $_[0] } : @_;
+	$args{width} && $args{height}
+		or croak "require 'width' and 'height'";
+	$args{depth} ||= $self->screen->depth;
+	my $x_pixmap= $self->display->new_pixmap($self->screen, $args{width}, $args{height}, $args{depth});
+	my $glx_pixmap_xid= X11::GLX::glXCreateGLXPixmap($self->display, $self->visual_info, $x_pixmap);
+	my $glx_pixmap= $display->get_cached_xobj($glx_pixmap_xid, 'X11::GLX::Pixmap', 1);
+	$glx_pixmap->x_pixmap($x_pixmap);
+	$glx_pixmap->{width}= $args{width};
+	$glx_pixmap->{height}= $args{height};
+	return $glx_pixmap;
+}
+
+=head2 begin_frame
+
+Convenience method; initializes rendering target if it wasn't already done,
+then clears the GL buffers.
+
+=cut
+
+sub begin_frame {
+	my $self= shift;
+	$self->target; # trigger lazy-build, connect, display window, etc
+	OpenGL::glClear($self->gl_clear_bits);
+}
+
+=head2 end_frame
+
+Convenience method; calls glXSwapBuffers and then logs any glGetError
+bits that were set, via L<Log::Any>
+
+=cut
+
+sub end_frame {
+	my $self= shift;
+	X11::GLX::glXSwapBuffers($self->display, $self->target);
+	my $e= $self->get_gl_errors;
+	$log->error("OpenGL error bits: ", join(', ', values %$e))
+		if $e;
+	return !$e;
+}
+
+=head2 swap_buffers
+
+Call glXSwapBuffers
+
+=cut
+
+sub swap_buffers {
+	my $self= shift;
+	X11::GLX::glXSwapBuffers($self->display, $self->target);
+}
+
+=head2 get_gl_errors
+
+Convenience method to call glGetError repeatedly and build a
+hash of the symbolic names of the error constants.
+
+=cut
+
+my %_gl_err_msg= (
+	map { eval { OpenGL->$_() => $_ } qw(
+		GL_INVALID_ENUM
+		GL_INVALID_VALUE
+		GL_INVALID_OPERATION
+		GL_INVALIDFRAMEBUFFER_OPERATION
+		GL_OUT_OF_MEMORY
+		GL_STACK_OVERFLOW
+		GL_STACK_UNDERFLOW
+		GL_TABLE_TOO_LARGE
+	)
+);
+
+sub get_gl_errors {
+	my $self= shift;
+	my (%errors, $e);
+	$errors{$e}= $_gl_err_msg{$e} || "(unrecognized) ".$e
+		while (($e= OpenGL::glGetError()));
+	return (keys %errors)? \%errors : undef;
+}
+
+=head2 apply_gl_projection
+
+For old-school OpenGL (i.e. non-shader), this sets up a simple perspective
+projection matrix.
+
+  $glx->apply_gl_projection(
+    ortho => $bool,
+    left => ..., right => ..., top => ..., bottom => ..., near => ..., far => ...,
+    x => ..., y => ..., z => ...,
+    aspect => ..., mirror_x => $bool, mirror_y => $bool,
+  );
+
+If C<ortho> is true, it calls C<glOrtho>, else C<glFrustum>.
+The C<left>, C<right>, C<top>, C<bottom>, C<near>, C<far> parameters are as
+documented for these functions.
+
+If you specify C<x>, C<y>, or C<z>, it calls C<glTranslated(-x,-y,-z)> after
+the C<glFrustum> or C<glOrtho>.
+
+If you specify C<aspect> and omit one or more of C<left>, C<right>, C<bottom>,
+C<top>, then it calculates the missing dimension by this aspect ratio.
+If C<aspect> is the string 'auto', it will calculate the missing dimension
+based on the combination of the window aspect ratio in pixels times the pixel
+physical aspect ratio in millimeters (as reported by X11) to give you a square
+coordinate system.  If both dimensions are missing, top defaults to C<-bottom>,
+or C<1>, and the rest is calculated from that.
+
+If you specify C<mirror_x> or C<mirror_y>, it will flip the coordinate system
+so that C<-x> is leftward or C<-y> is upward.  (remember, GL coordinates have
+C<+y> upward by default).  This will also call C<glFrontFace> to match, so
+mirrored X or Y is C<GL_CW> (clockwise) and neither mirrored or both mirrored
+is the default C<GL_CCW> (counter clockwise).
+
+=cut
+
+sub apply_gl_projection {
+	my $self= shift;
+	my %args= !@_? %{ $self->gl_projection || {} }
+		: @_ == 1 && ref($_[0]) eq 'HASH'? %{ $_[0] }
+		: @_;
+	my ($ortho, $l, $r, $t, $b, $near, $far, $x, $y, $z, $aspect, $mirror_x, $mirror_y)
+		= delete @args{qw/ ortho left right top bottom near far x y z aspect mirror_x mirror_y /};
+	croak "Unexpected arguments to apply_gl_projection"
+		if keys %args;
+	my $have_w= defined $l && defined $r;
+	my $have_h= defined $t && defined $b;
+	unless ($have_h && $have_w) {
+		if (!$aspect or $aspect eq 'auto') {
+			my ($w, $h)= $self->target->get_w_h;
+			my $screen= $self->screen;
+			$aspect= ($screen->width_mm / $screen->width * $w)
+			       / ($screen->height_mm / $screen->height * $h);
+		}
+		if (!have_w) {
+			if (!have_h) {
+				$t= (defined $b? -$b : 1) unless defined $t;
+				$b= -$t unless defined $b;
+			}
+			my $w= ($t - $b) * $aspect;
+			$r= (defined $l? $l + $w : $w / 2) unless defined $r;
+			$l= $r - $w unless defined $l;
+		}
+		else {
+			my $h= ($r - $l) / $aspect;
+			$t= (defined $b? $b + $h : $h / 2) unless defined $t;
+			$b= $t - $h unless defined $b;
+		}
+	}
+	($l, $r)= ($r, $l) if $mirror_x;
+	($t, $b)= ($b, $t) if $mirror_y;
+	$near= 1 unless defined $near;
+	$far= 1000 unless defined $far;
+	
+	OpenGL::glMatrixMode(OpenGL::GL_PROJECTION());
+	OpenGL::glLoadIdentity();
+	
+	$ortho? OpenGL::glOrtho($l, $r, $b, $t, $near, $far)
+	      : OpenGL::glFrustum($l, $r, $b, $t, $near, $far);
+	
+	OpenGL::glTranslated(-($x||0), -($y||0), -($z||0))
+		if $x or $y or $z;
+	
+	# If mirror is in effect, need to tell OpenGL which way the camera is
+	OpenGL::glFrontFace($mirror_x == $mirror_y? OpenGL::GL_CCW() : OpenGL::GL_CW());
+	OpenGL::glMatrixMode(OpenGL::GL_MODELVIEW());
+}
+
+1;

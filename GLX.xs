@@ -175,6 +175,10 @@ glXQueryContextInfoEXT(dpy, cx, attr_id, val_out_sv)
 
 MODULE = X11::GLX                     PACKAGE = X11::GLX::Context
 
+GLXContextID
+glXGetContextIDEXT(self)
+	GLXContext self
+
 void
 DESTROY(self)
 	GLXContext self
