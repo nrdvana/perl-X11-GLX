@@ -167,7 +167,7 @@ glXQueryContextInfoEXT(dpy, cx, attr_id, val_out_sv)
 		int val_out;
 	CODE:
 		RETVAL = glXQueryContextInfoEXT(dpy, cx, attr_id, &val_out);
-		if (RETVAL)
+		if (RETVAL == Success)
 			sv_setiv(val_out_sv, val_out);
 	OUTPUT:
 		RETVAL
@@ -176,8 +176,12 @@ glXQueryContextInfoEXT(dpy, cx, attr_id, val_out_sv)
 MODULE = X11::GLX                     PACKAGE = X11::GLX::Context
 
 GLXContextID
-glXGetContextIDEXT(self)
+id(self)
 	GLXContext self
+	CODE:
+		RETVAL = glXGetContextIDEXT(self);
+	OUTPUT:
+		RETVAL
 
 void
 DESTROY(self)

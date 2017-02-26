@@ -3,6 +3,10 @@ use strict;
 use warnings;
 use X11::Xlib;
 
+# ABSTRACT - GLX API (OpenGL on X11)
+
+our $VERSION= '0.00_00';
+
 use Exporter 'import';
 our %EXPORT_TAGS= (
 # BEGIN GENERATED XS CONSTANT LIST
@@ -23,14 +27,13 @@ $EXPORT_TAGS{functions}= [ grep { /^glX'/ } @EXPORT_OK ];
 $EXPORT_TAGS{constants}= [ grep { /^GLX/ } @EXPORT_OK ];
 $EXPORT_TAGS{all}= \@EXPORT_OK;
 
-our $VERSION= '0.00_00';
-
 require XSLoader;
 XSLoader::load('X11::GLX', $VERSION);
 
 BEGIN { @X11::GLX::Context::Imported::ISA= ('X11::GLX::Context'); }
+require X11::GLX::Pixmap;
 
-# ABSTRACT - GLX API (OpenGL on X11)
+__END__
 
 =head1 DESCRIPTION
 
@@ -161,5 +164,3 @@ Attributes:
   GLX_SCREEN_EXT         - Returns the screen number associated with ctx.
 
 =cut
-
-1;

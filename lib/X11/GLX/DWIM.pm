@@ -2,6 +2,7 @@ package X11::GLX::DWIM;
 use X11::Xlib;
 use OpenGL;
 use Moo;
+use Carp;
 use Log::Any '$log';
 
 # ABSTRACT - Do What I Mean, with OpenGL on X11
@@ -31,6 +32,10 @@ calls needed to create the most common types of rendering target for OpenGL.
 Instance of L<X11::Xlib::Display>.  Lazy-built from C<$DISPLAY> environment
 var, or connects to localhost.
 
+=head2 screen
+
+Instance of L<X11::Xlib::Screen>.  Defaults to the default screen of the display.
+
 =cut
 
 has display => ( is => 'lazy' );
@@ -39,6 +44,10 @@ sub _build_display {
 	my $self= shift;
 	return X11::Xlib->new;
 }
+
+has screen  => ( is => 'lazy' );
+
+sub _build_screen { shift->display->screen }
 
 =head2 glx_version
 
@@ -197,7 +206,6 @@ sub has_target { defined shift->{target} }
 sub target {
 	my $self= shift;
 	if (@_ || !exists $self->{target}) {
-		my $value;
 		if (@_ && !defined $_[0]) {
 			X11::GLX::glXMakeCurrent($self->display, 0, undef)
 				or croak "Can't un-set GLX target";
@@ -216,10 +224,9 @@ sub target {
 
 sub _inflate_target {
 	my ($self, $arg)= @_;
-	my $arg= $self->_target_args;
 	$arg ||= { window => 1 };
 	return !ref $arg? $self->display->get_cached_xobj($arg)
-		: ref($arg)->isa('X11::Xlib::XID')? $args
+		: ref($arg)->isa('X11::Xlib::XID')? $arg
 		: ref($arg)->isa('HASH')? (
 			$arg->{window}? $self->create_render_window($arg->{window})
 			: $arg->{pixmap}? $self->create_render_pixmap($arg->{pixmap})
@@ -284,8 +291,14 @@ sub create_render_window {
 	$args{depth} ||= $self->visual_info->depth;
 	$args{min_width} ||= $args{width};
 	$args{min_height} ||= $args{height};
-	return $display->new_window(\%args);
+	return $self->display->new_window(\%args);
 }
+
+=head2 create_render_pixmap
+
+
+
+=cut
 
 sub create_render_pixmap {
 	my $self= shift;
@@ -295,7 +308,7 @@ sub create_render_pixmap {
 	$args{depth} ||= $self->screen->depth;
 	my $x_pixmap= $self->display->new_pixmap($self->screen, $args{width}, $args{height}, $args{depth});
 	my $glx_pixmap_xid= X11::GLX::glXCreateGLXPixmap($self->display, $self->visual_info, $x_pixmap);
-	my $glx_pixmap= $display->get_cached_xobj($glx_pixmap_xid, 'X11::GLX::Pixmap', 1);
+	my $glx_pixmap= $self->display->get_cached_xobj($glx_pixmap_xid, 'X11::GLX::Pixmap', 1);
 	$glx_pixmap->x_pixmap($x_pixmap);
 	$glx_pixmap->{width}= $args{width};
 	$glx_pixmap->{height}= $args{height};
@@ -350,7 +363,7 @@ hash of the symbolic names of the error constants.
 =cut
 
 my %_gl_err_msg= (
-	map { eval { OpenGL->$_() => $_ } qw(
+	map { eval { OpenGL->$_() => $_ } } qw(
 		GL_INVALID_ENUM
 		GL_INVALID_VALUE
 		GL_INVALID_OPERATION
@@ -423,8 +436,8 @@ sub apply_gl_projection {
 			$aspect= ($screen->width_mm / $screen->width * $w)
 			       / ($screen->height_mm / $screen->height * $h);
 		}
-		if (!have_w) {
-			if (!have_h) {
+		if (!$have_w) {
+			if (!$have_h) {
 				$t= (defined $b? -$b : 1) unless defined $t;
 				$b= -$t unless defined $b;
 			}

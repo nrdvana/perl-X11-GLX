@@ -2,13 +2,8 @@
 
 use strict;
 use warnings;
-use Test::More;
+use Test::More tests => 2;
 
-use_ok('X11::GLX');
-use_ok('X11::GLX::DWIM');
-
-my $x= X11::GLX::DWIM->new->visualinfo;
-use DDP;
-p $x;
-
-done_testing;
+use_ok('X11::GLX')
+ && use_ok('X11::GLX::DWIM')
+ or BAIL_OUT;

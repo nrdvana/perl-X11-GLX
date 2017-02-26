@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 10;
+use Test::More tests => 17;
 use X11::Xlib;
 use X11::GLX ':all';
 
@@ -36,7 +36,7 @@ if (!$pid) {
 	ok( my $remote_cx= glXImportContextEXT($dpy2, $cx_id), 'glXImportContextEXT' );
 	isa_ok( $remote_cx, 'X11::GLX::Context::Imported', 'remote_cx' );
 	isa_ok( $remote_cx, 'X11::GLX::Context', 'remote_cx' );
-	ok( glXQueryContextInfoEXT($dpy2, $remote_cx, GLX_VISUAL_ID_EXT, my $vis2), 'glXQueryContextInfoEXT' );
+	is( glXQueryContextInfoEXT($dpy2, $remote_cx, GLX_VISUAL_ID_EXT, my $vis2), 0, 'glXQueryContextInfoEXT' );
 	ok( $vis2, 'got a visual' ) or diag explain $vis2;
 	$vis2= $vis2? $dpy2->visual_info($vis2) : $vis;
 	ok( my $cx2= glXCreateContext($dpy2, $vis2, $remote_cx, 0), 'child glXCreateContext' );
