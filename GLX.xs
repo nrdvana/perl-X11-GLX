@@ -20,6 +20,11 @@
 
 //GLXContextID glXGetContextID(const GLXContext context);
 
+extern GLXContextID glXGetContextIDEXT(GLXContext cx);
+extern Bool glXQueryContextInfoEXT(Display *dpy, GLXContext cx, int attr, int *out_val);
+extern GLXContext glXImportContextEXT(Display *dpy, GLXContextID id);
+extern void glXFreeContextEXT(Display *dpy, GLXContext cx);
+
 typedef GLXContext GLXContextOrNull;
 typedef GLXContext GLXContextImported;
 
@@ -103,7 +108,7 @@ glXDestroyContext(dpy, cx_sv)
 		glXDestroyContext(dpy, (GLXContext) (void*) SvIV(SvRV(cx_sv)));
 		// If it was imported, then also free it
 		if (sv_isa(cx_sv, "X11::GLX::Context::Imported"))
-			glXFreeContextEXT((GLXContext) (void*) SvIV(SvRV(cx_sv)));
+			glXFreeContextEXT(dpy, (GLXContext) (void*) SvIV(SvRV(cx_sv)));
 		else
 			// Now, null the pointer to mark it as being properly freed
 			SvIV_set(SvRV(cx_sv), 0);
@@ -146,14 +151,15 @@ glXImportContextEXT(dpy, cx_id)
 	GLXContextID cx_id
 
 void
-glXFreeContextEXT(cx_sv)
+glXFreeContextEXT(dpy, cx_sv)
+	Display *dpy
 	SV *cx_sv
 	CODE:
 		if (!sv_isa(cx_sv, "X11::GLX::Context::Imported"))
 			croak("argument must be a GLX::Context::Imported");
 		if (!SvIV(SvRV(cx_sv)))
 			croak("Attempt to destroy GLX::Context twice");
-		glXFreeContextEXT((GLXContext) (void*) SvIV(SvRV(cx_sv)));
+		glXFreeContextEXT(dpy, (GLXContext) (void*) SvIV(SvRV(cx_sv)));
 		// Now, null the pointer to mark it as being properly freed
 		SvIV_set(SvRV(cx_sv), 0);
 
@@ -187,7 +193,7 @@ void
 DESTROY(self)
 	GLXContext self
 	CODE:
-		// Display pointer is required to free a GLXContext.  Must be handled by parent.
+		// Display pointer is required to free a GLXContext.  Must be handled by perl code.
 		if (self) croak("Memory leak! incorrect destruction of GLX::Context");
 
 MODULE = X11::GLX                     PACKAGE = X11::GLX::Context::Imported
@@ -196,8 +202,8 @@ void
 DESTROY(self)
 	GLXContext self
 	CODE:
-		// Display pointer is required to free a GLXContext.  Must be handled by parent.
-		if (self) glXFreeContextEXT(self);
+		// Display pointer is required to free a GLXContext.  Must be handled by perl code.
+		if (self) croak("Memory leak! incorrect destruction of GLX::Context::Imported");
 
 MODULE = X11::GLX                     PACKAGE = X11::GLX::DWIM
 

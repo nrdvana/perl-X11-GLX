@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 17;
+use Test::More tests => 11;
 use X11::Xlib;
 use X11::GLX ':all';
 
@@ -28,20 +28,40 @@ ok( my $cx_id= glXGetContextIDEXT($cx), 'glXGetContextIDEXT' );
 $dpy->XFlush;
 
 defined ( my $pid= fork() ) or die "fork: $!";
-
 if (!$pid) {
-	bless $dpy, 'Nothing';
-	bless $cx, 'Nothing';
-	ok( my $dpy2= X11::Xlib->new, 'new X11::Xlib' );
+	exec($^X, '-e', <<'END', $cx_id) or die "Exec perl -e failed: $!";
+	use strict;
+	use warnings;
+	use X11::Xlib;
+	use X11::GLX ':all';
+	sub err(&) { my $code= shift; my $ret; { local $@= ''; eval { $code->() }; $ret= $@; } $ret }
+	
+	# Can't get Test::More to play nicely with child proc...
+	my $n= 0;
+	my $indent= "    ";
+	sub ok { my ($bool, $msg)= @_; print($indent.($bool? "ok ":"not ok ").++$n." - $msg\n"); }
+	sub is { my ($val, $expect, $msg)= @_; print($indent.($val eq $expect? "ok ":"not ok ").++$n." - $msg\n"); }
+	sub isa_ok { my ($obj, $cls, $msg)= @_; print($indent.(ref($obj)->isa($cls)? "ok ":"not ok ").++$n." - $msg is a $cls\n"); }
+	
+	my $cx_id= 0 + $ARGV[0];
+	print "$indent# Connecting to shared context ID $cx_id\n";
+	ok( my $dpy2= X11::Xlib->new, "new X11::Xlib" );
 	ok( my $remote_cx= glXImportContextEXT($dpy2, $cx_id), 'glXImportContextEXT' );
 	isa_ok( $remote_cx, 'X11::GLX::Context::Imported', 'remote_cx' );
 	isa_ok( $remote_cx, 'X11::GLX::Context', 'remote_cx' );
 	is( glXQueryContextInfoEXT($dpy2, $remote_cx, GLX_VISUAL_ID_EXT, my $vis2), 0, 'glXQueryContextInfoEXT' );
 	ok( $vis2, 'got a visual' ) or diag explain $vis2;
-	$vis2= $vis2? $dpy2->visual_info($vis2) : $vis;
+	$vis2= $vis2? $dpy2->visual_info($vis2) : glXChooseVisual($dpy2);
 	ok( my $cx2= glXCreateContext($dpy2, $vis2, $remote_cx, 0), 'child glXCreateContext' );
-	glXFreeContextEXT($remote_cx);
-	glXDestroyContext($dpy2, $cx2);
+	is( err{ glXFreeContextEXT($dpy2, $remote_cx); }, '', 'glXFreeContextEXT' );
+	is( err{ glXDestroyContext($dpy2, $cx2); }, '', 'glXDestroyContext' );
+	
+	print "${indent}1..9\n";
+END
 }
 wait;
+is( $?, 0, "Child exited cleanly" );
+
 glXDestroyContext($dpy, $cx);
+Test::More->builder->no_ending(1); # Test::Builder child and parent argue about how many tests were run
+
