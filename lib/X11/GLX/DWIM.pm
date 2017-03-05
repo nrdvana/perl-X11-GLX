@@ -142,30 +142,28 @@ X11 ID for a GLX context with:
 =cut
 
 has _glx_context_args => ( is => 'ro', init_arg => 'glx_context' );
-#has glx_context => ( is => 'lazy', 
+has glx_context => ( is => 'rw', lazy => 1, builder => 1, clearer => 1, predicate => 1 );
 
-sub glx_context {
+before 'clear_glx_context' => sub {
 	my $self= shift;
-	if (@_) {
-		my $val= shift;
-		if ($val && !ref($val)->isa('X11::GLX::Context')) {
-			$val= $self->_inflate_glx_context($val);
-		}
-		if ($self->{glx_context}) {
-			$log->trace('destroying old GLX context');
-			X11::GLX::glXDestroyContext($self->display, $self->{glx_context})
-		}
-		$self->{glx_context}= $val;
-	}
-	elsif (!exists $self->{glx_context}) {
-		$self->{glx_context}= $self->_inflate_glx_context($self->_glx_context_args);
-	}
-	$self->{glx_context};
-}
+	$self->clear_target;
+	$log->trace('destroying old GLX context');
+	X11::GLX::glXDestroyContext($self->display, $self->glx_context);
+};
 
-sub _inflate_glx_context {
+before 'glx_context' => sub {
+	if (@_ > 1) {
+		my $self= $_[0];
+		$_[1] or croak "Use clear_glx_context instead of setting a false value"; 
+		$self->clear_glx_context if $self->has_glx_context;
+		$_[1]= $self->_build_glx_context($_[1]);
+	}
+};
+
+sub _build_glx_context {
 	my ($self, $args)= @_;
-	$args ||= { direct => 1 };
+	$args ||= $self->_glx_context_args || { direct => 1 };
+	return $args if ref($args)->isa('X11::GLX::Context');
 	ref($args) eq 'HASH' or croak "Don't know how to use $args as a glx_context";
 	my $direct= $args->{direct};
 	my $shared= $args->{shared};
@@ -226,17 +224,21 @@ triggering a lazy-build of the initial target.
 =cut
 
 has _target_args => ( is => 'rw', init_arg => 'target' );
+has target => ( is => 'rw', clearer => 1, predicate => 1, reader => '_get_target', writer => '_set_target' );
 
-sub has_target { defined shift->{target} }
+before clear_target => sub {
+	if ($_[0]->has_target) {
+		$log->trace("Un-setting GLX target with glXMakeCurrent(0, undef)");
+		X11::GLX::glXMakeCurrent($_[0]->display)
+			or croak "Can't un-set GLX target";
+	}
+};
 
 sub target {
 	my $self= shift;
-	if (@_ || !exists $self->{target}) {
+	if (@_ || !$self->has_target) {
 		if (@_ && !defined $_[0]) {
-			$log->trace("Un-setting GLX target with glXMakeCurrent(0, undef)");
-			X11::GLX::glXMakeCurrent($self->display)
-				or croak "Can't un-set GLX target";
-			return ($self->{target}= undef);
+			croak("Call clear_target instead of setting to undef");
 		}
 		my $value= $self->_inflate_target(@_? $_[0] : $self->_target_args);
 		if ($value->isa('X11::Xlib::Window')) {
@@ -249,13 +251,13 @@ sub target {
 		$log->trace('Calling glXMakeCurrent');
 		X11::GLX::glXMakeCurrent($self->display, $value->xid, $self->glx_context)
 			or croak "Can't set target to $value, glXMakeCurrent failed";
-		$self->{target}= $value;
+		$self->_set_target($value);
 		my ($w, $h)= $value->get_w_h;
 		$log->tracef('Calling glViewport(0, 0, %d, %d)', $w, $h);
 		OpenGL::glViewport(0, 0, $w, $h);
 		$self->apply_gl_projection if $self->gl_projection;
 	}
-	return $self->{target};
+	return $self->_get_target;
 }
 
 sub _inflate_target {
@@ -522,11 +524,11 @@ sub apply_gl_projection {
 sub DESTROY {
 	my $self= shift;
 	# Release resources in opposite order they were allocated
-	$self->target(undef);
+	$self->clear_target;
 	# The GLX context needs manually freed because the object doesn't
 	# hold a reference to the Display, which it needs in order to
 	# free the resource.
-	$self->glx_context(undef);
+	$self->clear_glx_context;
 	# The colormap has a strong ref to the Display handle, and the
 	# visual_info doesn't need freed.
 }
