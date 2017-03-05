@@ -15,8 +15,8 @@ Extends L<X11::Xlib::Pixmap> with:
 
 The X11 pixmap which this GLX pixmap is extending.
 
-The GLX pixmap holds this reference to make sure the GLX pixmap is destroyed
-before the X pixmap.
+The GLX pixmap holds this reference to make sure the X pixmap is not destroyed
+until after the GLX pixmap.
 
 =cut
 

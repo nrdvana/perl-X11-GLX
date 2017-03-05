@@ -114,7 +114,7 @@ glXDestroyContext(dpy, cx_sv)
 			SvIV_set(SvRV(cx_sv), 0);
 
 Bool
-glXMakeCurrent(dpy, xid, cx)
+glXMakeCurrent(dpy, xid= None, cx= NULL)
 	Display *dpy
 	Drawable xid
 	GLXContext cx

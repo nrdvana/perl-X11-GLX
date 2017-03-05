@@ -1,5 +1,6 @@
 package X11::GLX::DWIM;
 use X11::Xlib;
+use X11::GLX;
 use OpenGL;
 use Moo;
 use Carp;
@@ -42,6 +43,7 @@ has display => ( is => 'lazy' );
 
 sub _build_display {
 	my $self= shift;
+	$log->trace('Connecting to display server');
 	return X11::Xlib->new;
 }
 
@@ -58,12 +60,14 @@ The GLX version number.  Read-only, lazy-built from L</display>.
 has glx_version => ( is => 'lazy' );
 sub _build_glx_version {
 	X11::GLX::glXQueryVersion(shift->display, my $major, my $minor);
-	return [ $major, $minor ];
+	$log->tracef('GLX Version %d.%d', $major, $minor)
+		if $log->is_trace;
+	return "$major.$minor";
 }
 
 =head2 glx_extensions
 
-The set of extensions supported by this implementation of GLX.
+The list of extensions supported by this implementation of GLX.
 Read-only, lazy-built from L</display>.
 
 =cut
@@ -93,11 +97,14 @@ has visual_info => ( is => 'lazy', init_arg => undef );
 sub _build_visual_info {
 	my $self= shift;
 	my $arg= $self->_visual_info_args;
-	return X11::GLX::glXChooseVisual($self->display, $self->screen)
-		unless $arg;
-	return X11::GLX::glXChooseVisual($self->display, $self->screen, $arg)
-		if ref $arg eq 'ARRAY';
-	return $self->display->visual_info($arg);
+	$log->tracef('Calling glXChooseVisual with %s options', $arg? 'custom':'default');
+	my $vis_info= !$arg? X11::GLX::glXChooseVisual($self->display, $self->screen->screen_number)
+		: ref $arg eq 'ARRAY'? X11::GLX::glXChooseVisual($self->display, $self->screen->screen_number, $arg)
+		: ref($arg)->isa('X11::Xlib::Visual')? $self->display->visual_info($arg)
+		: croak "Can't convert $arg to XVisualInfo";
+	$log->tracef('Chose visual %d  (0x%X)', $vis_info->visualid, $vis_info->visualid)
+		if $log->is_trace;
+	return $vis_info;
 }
 
 =head2 colormap
@@ -110,6 +117,8 @@ colormap compatible with L</visual_info>.
 has colormap => ( is => 'lazy' );
 sub _build_colormap {
 	my $self= shift;
+	$log->tracef("Creating colormap for visual %s", $self->visual_info->visual)
+		if $log->is_trace;
 	$self->display->new_colormap($self->screen->root_window, $self->visual_info->visual);
 }
 
@@ -133,6 +142,7 @@ X11 ID for a GLX context with:
 =cut
 
 has _glx_context_args => ( is => 'ro', init_arg => 'glx_context' );
+#has glx_context => ( is => 'lazy', 
 
 sub glx_context {
 	my $self= shift;
@@ -141,8 +151,10 @@ sub glx_context {
 		if ($val && !ref($val)->isa('X11::GLX::Context')) {
 			$val= $self->_inflate_glx_context($val);
 		}
-		X11::GLX::glXDestroyContext($self->{glx_context})
-			if $self->{glx_context};
+		if ($self->{glx_context}) {
+			$log->trace('destroying old GLX context');
+			X11::GLX::glXDestroyContext($self->display, $self->{glx_context})
+		}
 		$self->{glx_context}= $val;
 	}
 	elsif (!exists $self->{glx_context}) {
@@ -157,21 +169,35 @@ sub _inflate_glx_context {
 	ref($args) eq 'HASH' or croak "Don't know how to use $args as a glx_context";
 	my $direct= $args->{direct};
 	my $shared= $args->{shared};
+	my $vis= $self->visual_info;
 	
 	# If not shared, create context with default of direct-render
-	return X11::GLX::glXCreateContext($self->display, $self->visual_info, undef, defined $direct? $direct : 1)
-		unless defined $shared;
+	unless (defined $shared) {
+		$direct= 1 unless defined $direct;
+		$log->trace("Calling glXCreateContext shared= direct=$direct")
+			if $log->is_trace;
+		return X11::GLX::glXCreateContext($self->display, $vis, undef, $direct);
+	}
 	
 	if (!ref $shared || ref($shared)->isa('X11::Xlib::XID')) {
 		my $id= !ref($shared)? $shared : $shared->xid;
+		$direct= 0 unless defined $direct;
+		
+		$log->trace("Importing GLX context id=$id") if $log->is_trace;
 		my $remote_cx= X11::GLX::glXImportContextEXT($self->display, $id)
 			or die "Can't import remote GLX context '$id'";
-		my $cx= X11::GLX::glXCreateContext($self->display, $self->visual_info, $remote_cx, defined $direct? $direct : 0);
+		
+		$log->trace("Calling glXCreateContext shared=$remote_cx, direct=$direct") if $log->is_trace;
+		my $cx= X11::GLX::glXCreateContext($self->display, $vis, $remote_cx, $direct);
+		
+		$log->trace("Calling glXFreeContextEXT");
 		glXFreeContextEXT($remote_cx);
 		return $cx;
 	}
 	elsif (ref($shared)->isa('X11::GLX::Context')) {
-		return X11::GLX::glXCreateContext($self->display, $self->visual_info, $shared, defined $direct? $direct : 0);
+		$direct= 0 unless defined $direct;
+		$log->trace("Calling glXCreateContext shared=$shared, direct=$direct") if $log->is_trace;
+		return X11::GLX::glXCreateContext($self->display, $vis, $shared, $direct);
 	}
 	else {
 		croak "Don't know how to share GLX context with $shared";
@@ -207,15 +233,25 @@ sub target {
 	my $self= shift;
 	if (@_ || !exists $self->{target}) {
 		if (@_ && !defined $_[0]) {
-			X11::GLX::glXMakeCurrent($self->display, 0, undef)
+			$log->trace("Un-setting GLX target with glXMakeCurrent(0, undef)");
+			X11::GLX::glXMakeCurrent($self->display)
 				or croak "Can't un-set GLX target";
 			return ($self->{target}= undef);
 		}
 		my $value= $self->_inflate_target(@_? $_[0] : $self->_target_args);
+		if ($value->isa('X11::Xlib::Window')) {
+			$log->trace('Calling XMapWindow');
+			$value->show;
+			$self->display->flush_sync;
+			sleep 1;
+			$self->display->flush_sync;
+		}
+		$log->trace('Calling glXMakeCurrent');
 		X11::GLX::glXMakeCurrent($self->display, $value->xid, $self->glx_context)
 			or croak "Can't set target to $value, glXMakeCurrent failed";
 		$self->{target}= $value;
-		my ($w, $h)= $value->get_width_height;
+		my ($w, $h)= $value->get_w_h;
+		$log->tracef('Calling glViewport(0, 0, %d, %d)', $w, $h);
 		OpenGL::glViewport(0, 0, $w, $h);
 		$self->apply_gl_projection if $self->gl_projection;
 	}
@@ -225,9 +261,10 @@ sub target {
 sub _inflate_target {
 	my ($self, $arg)= @_;
 	$arg ||= { window => 1 };
+	$log->tracef("Creating target for %s", $arg);
 	return !ref $arg? $self->display->get_cached_xobj($arg)
 		: ref($arg)->isa('X11::Xlib::XID')? $arg
-		: ref($arg)->isa('HASH')? (
+		: ref($arg) eq 'HASH'? (
 			$arg->{window}? $self->create_render_window($arg->{window})
 			: $arg->{pixmap}? $self->create_render_pixmap($arg->{pixmap})
 			: croak "Expected target->{window} or target->{pixmap}"
@@ -276,7 +313,10 @@ sub _changed_gl_projection {
 
 sub create_render_window {
 	my $self= shift;
-	my %args= @_ == 1 && ref($_[0]) eq 'HASH'? %{ $_[0] } : @_;
+	my %args= @_ == 1 && ref($_[0]) eq 'HASH'? %{ $_[0] }
+		: (1&@_) == 0? @_
+		: @_ == 1 && $_[0] eq '1'? ()
+		: croak "Can't construct window from (".join(',', @_).')';
 	$args{x} ||= 0;
 	$args{y} ||= 0;
 	if (!$args{width} || !$args{height}) {
@@ -291,7 +331,8 @@ sub create_render_window {
 	$args{depth} ||= $self->visual_info->depth;
 	$args{min_width} ||= $args{width};
 	$args{min_height} ||= $args{height};
-	return $self->display->new_window(\%args);
+	$log->tracef("create window: %s", \%args);
+	return $self->display->new_window(%args);
 }
 
 =head2 create_render_pixmap
@@ -306,13 +347,16 @@ sub create_render_pixmap {
 	$args{width} && $args{height}
 		or croak "require 'width' and 'height'";
 	$args{depth} ||= $self->screen->depth;
+	$log->tracef("create X pixmap: %s", \%args);
 	my $x_pixmap= $self->display->new_pixmap($self->screen, $args{width}, $args{height}, $args{depth});
+	$log->tracef("create GLX pixmap: %s %s", $self->visual_info, $x_pixmap) if $log->is_trace;
 	my $glx_pixmap_xid= X11::GLX::glXCreateGLXPixmap($self->display, $self->visual_info, $x_pixmap);
-	my $glx_pixmap= $self->display->get_cached_xobj($glx_pixmap_xid, 'X11::GLX::Pixmap', 1);
-	$glx_pixmap->x_pixmap($x_pixmap);
-	$glx_pixmap->{width}= $args{width};
-	$glx_pixmap->{height}= $args{height};
-	return $glx_pixmap;
+	return $self->display->get_cached_xobj($glx_pixmap_xid, 'X11::GLX::Pixmap', {
+		width    => $args{width},
+		height   => $args{height},
+		x_pixmap => $x_pixmap,
+		autofree => 1
+	});
 }
 
 =head2 begin_frame
@@ -324,6 +368,7 @@ then clears the GL buffers.
 
 sub begin_frame {
 	my $self= shift;
+	$log->trace('begin_frame');
 	$self->target; # trigger lazy-build, connect, display window, etc
 	OpenGL::glClear($self->gl_clear_bits);
 }
@@ -337,6 +382,7 @@ bits that were set, via L<Log::Any>
 
 sub end_frame {
 	my $self= shift;
+	$log->trace('Calling glXSwapBuffers');
 	X11::GLX::glXSwapBuffers($self->display, $self->target);
 	my $e= $self->get_gl_errors;
 	$log->error("OpenGL error bits: ", join(', ', values %$e))
@@ -352,6 +398,7 @@ Call glXSwapBuffers
 
 sub swap_buffers {
 	my $self= shift;
+	$log->trace('Calling glXSwapBuffers');
 	X11::GLX::glXSwapBuffers($self->display, $self->target);
 }
 
@@ -456,6 +503,8 @@ sub apply_gl_projection {
 	$near= 1 unless defined $near;
 	$far= 1000 unless defined $far;
 	
+	$log->tracef('Setting projection matrix: l=%.4lf r=%.4lf b=%.4lf t=%.4lf near=%.4lf far=%.4lf',
+		$l, $r, $b, $t, $near, $far);
 	OpenGL::glMatrixMode(OpenGL::GL_PROJECTION());
 	OpenGL::glLoadIdentity();
 	
@@ -466,8 +515,20 @@ sub apply_gl_projection {
 		if $x or $y or $z;
 	
 	# If mirror is in effect, need to tell OpenGL which way the camera is
-	OpenGL::glFrontFace($mirror_x == $mirror_y? OpenGL::GL_CCW() : OpenGL::GL_CW());
+	OpenGL::glFrontFace(!$mirror_x eq !$mirror_y? OpenGL::GL_CCW() : OpenGL::GL_CW());
 	OpenGL::glMatrixMode(OpenGL::GL_MODELVIEW());
+}
+
+sub DESTROY {
+	my $self= shift;
+	# Release resources in opposite order they were allocated
+	$self->target(undef);
+	# The GLX context needs manually freed because the object doesn't
+	# hold a reference to the Display, which it needs in order to
+	# free the resource.
+	$self->glx_context(undef);
+	# The colormap has a strong ref to the Display handle, and the
+	# visual_info doesn't need freed.
 }
 
 1;
