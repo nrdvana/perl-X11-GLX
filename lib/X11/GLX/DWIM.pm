@@ -139,6 +139,14 @@ X11 ID for a GLX context with:
 
   my $xid= $glx->glx_context->id
 
+=head2 has_glx_context
+
+Returns whether glx_context has been initialized.
+
+=head2 clear_glx_context
+
+Destroy the current GLX context, also clearing the L</target>.
+
 =cut
 
 has _glx_context_args => ( is => 'ro', init_arg => 'glx_context' );
@@ -221,6 +229,10 @@ to a full-screen window.
 Returns true if the target has been initialized.  Use this to prevent
 triggering a lazy-build of the initial target.
 
+=head2 clear_target
+
+Use this to un-set the target.
+
 =cut
 
 has _target_args => ( is => 'rw', init_arg => 'target' );
@@ -244,9 +256,6 @@ sub target {
 		if ($value->isa('X11::Xlib::Window')) {
 			$log->trace('Calling XMapWindow');
 			$value->show;
-			$self->display->flush_sync;
-			sleep 1;
-			$self->display->flush_sync;
 		}
 		$log->trace('Calling glXMakeCurrent');
 		X11::GLX::glXMakeCurrent($self->display, $value->xid, $self->glx_context)

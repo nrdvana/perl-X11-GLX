@@ -9,17 +9,19 @@ use Log::Any::Adapter 'TAP';
 use OpenGL ':all';
 
 my $dwim= new_ok( 'X11::GLX::DWIM', [ gl_projection => {} ] );
-$dwim->display;
-$dwim->glx_context;
-$dwim->target;
+
+ok( $dwim->display );
+ok( $dwim->glx_context );
+ok( $dwim->target );
+
+set_gl_options();
 
 for (1..60) {
 	$dwim->begin_frame;
 	glLoadIdentity();
-	glTranslated(0,0,10);
+	glTranslated(0,0,-3);
 	glDisable(GL_TEXTURE_2D);
-	glColor4d(1,1,1,1);
-	glRotated($_*4, 1, 1, 1);
+	glRotated($_*3, 1, 1.5, 1);
 	cube();
 	$dwim->end_frame;
 }
@@ -59,6 +61,18 @@ sub cube {
 		glEnd();
 		glEndList();
 	}
+}
+sub set_gl_options {
+	glClearColor(0, 0, 0, 1);
+	glClearDepth(1);
+	glColor4d(1,1,1,1);
+	glDepthFunc(GL_LEQUAL);
+	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST);
+	glShadeModel(GL_SMOOTH);
+	glEnable(GL_BLEND);
+	glEnable(GL_TEXTURE_2D);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 }
 
 done_testing;
