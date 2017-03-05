@@ -23,19 +23,7 @@ BEGIN {
 
 my $dep= ExtUtils::Depends->new('X11::GLX', 'X11::Xlib');
 
-#local *Devel::CheckLib::_quiet_system= sub { print join(" ", @_); system(@_); };
-#
-#check_lib_or_exit(
-#    INC => $vars{INC},
-#    lib    => '-lblib/arch/auto/X11/Xlib/Xlib.so',
-#    header => [ 'PerlXlib.h' ]
-#);
-
-$dep->set_libs('-lGL /home/user/perl5/perlbrew/perls/perl-5.24.0/lib/site_perl/5.24.0/x86_64-linux/auto/X11/Xlib/Xlib.so');
+$dep->set_libs('-lGL');
 $dep->add_xs('GLX.xs');
 $dep->add_pm(map { my $n= $_; $n =~ s/^lib/\$(INST_LIB)/; $_ => $n } <lib/*/*.pm>, <lib/*/*/*.pm>);
 $dep->add_typemaps('typemap');
-
-my %vars= $dep->get_makefile_vars;
-use DDP;
-p %vars;
