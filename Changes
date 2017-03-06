@@ -1,0 +1,3 @@
+Version 0.01
+ - Initial version, supporting basic glX and import_context extension
+ - DWIM module for "making it go" with minimal effort.

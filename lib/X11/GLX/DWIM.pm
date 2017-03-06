@@ -6,6 +6,8 @@ use Moo;
 use Carp;
 use Log::Any '$log';
 
+our $VERSION= '0.00_02';
+
 # ABSTRACT - Do What I Mean, with OpenGL on X11
 
 =head1 SYNOPSIS
@@ -16,10 +18,13 @@ use Log::Any '$log';
     my_custom_opengl_rendering();
     $glx->end_frame();
   }
+  
   # defaults above:
   #   Connect to default X11 Display
   #   32-bit RGBA visual, double buffered
   #   rendering to full-screen window.  Direct-render if supported.
+  #   begin_frame calls glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
+  #   end_frame calls glXSwapBuffers and reports any glError
 
 =head1 DESCRIPTION
 
@@ -86,8 +91,8 @@ sub _build_glx_extensions {
 
 Lazy-built, read-only.  Instance of L<X11::Xlib::XVisualInfo>.
 Can be initialized with an arrayref of parameters (integer codes) to pass to
-C<glXChooseVisual>, or with a hashref of fields to pass to the constructor of
-C<XVisualInfo>.
+L<glXChooseVisual|X11::GLX/glXChooseVisual>, or with a hashref of fields to
+pass to the constructor of C<XVisualInfo>.
 
 =cut
 
@@ -125,7 +130,7 @@ sub _build_colormap {
 =head2 glx_context
 
 An instance of L<X11::GLX::Context>.  You can also initialize it with a hash
-of arguments for the call to glXCreateContext:
+of arguments for the call to L<glXCreateContext|X11::GLX/glXCreateContext>
 
   $glx->glx_context({
     direct => $bool,            # for direct rendering ("DRI")
@@ -138,6 +143,9 @@ If your server supports it, and your context is indirect, you can discover the
 X11 ID for a GLX context with:
 
   my $xid= $glx->glx_context->id
+
+and then use that ID for the C<shared> option when creating later GL contexts
+in other processes.  See L<X11::GLX/Shared GL Contexts>.
 
 =head2 has_glx_context
 
@@ -318,7 +326,20 @@ sub _changed_gl_projection {
 
 =head2 create_render_window
 
+  $glx->target( $glx->create_render_window( \%args ) );
 
+Create a window suitable for use as an OpenGL rendering target.
+C<%args> can be:
+
+  x        - default 0
+  y        - default 0
+  width    - default to screen width
+  height   - default to screen height
+  class    - default to InputOutput
+  ...
+
+There are dozens of other parameters you can specify.
+See L<X11::Xlib::Display/new_window>.
 
 =cut
 
@@ -348,7 +369,14 @@ sub create_render_window {
 
 =head2 create_render_pixmap
 
+  $glx->target( $glx->create_render_pixmap( \%args ) );
 
+Create a pixmap suitable for use as an OpenGL rendering target.
+C<%args> can be:
+
+  width - required
+  height - required
+  depth  - defaults to depth of your visual
 
 =cut
 
@@ -357,7 +385,7 @@ sub create_render_pixmap {
 	my %args= @_ == 1 && ref($_[0]) eq 'HASH'? %{ $_[0] } : @_;
 	$args{width} && $args{height}
 		or croak "require 'width' and 'height'";
-	$args{depth} ||= $self->screen->depth;
+	$args{depth} ||= $self->visual_info->depth;
 	$log->tracef("create X pixmap: %s", \%args);
 	my $x_pixmap= $self->display->new_pixmap($self->screen, $args{width}, $args{height}, $args{depth});
 	$log->tracef("create GLX pixmap: %s %s", $self->visual_info, $x_pixmap) if $log->is_trace;
@@ -469,7 +497,7 @@ coordinate system.  If both dimensions are missing, top defaults to C<-bottom>,
 or C<1>, and the rest is calculated from that.
 
 If you specify C<mirror_x> or C<mirror_y>, it will flip the coordinate system
-so that C<-x> is leftward or C<-y> is upward.  (remember, GL coordinates have
+so that C<+x> is leftward or C<+y> is downward.  (remember, GL coordinates have
 C<+y> upward by default).  This will also call C<glFrontFace> to match, so
 mirrored X or Y is C<GL_CW> (clockwise) and neither mirrored or both mirrored
 is the default C<GL_CCW> (counter clockwise).
