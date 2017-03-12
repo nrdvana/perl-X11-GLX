@@ -6,7 +6,7 @@ use Moo;
 use Carp;
 use Log::Any '$log';
 
-our $VERSION= '0.00_02';
+our $VERSION= '0.00_03';
 
 # ABSTRACT - Do What I Mean, with OpenGL on X11
 
@@ -476,14 +476,18 @@ projection matrix.
 
   $glx->apply_gl_projection(
     ortho => $bool,
-    left => ..., right => ..., top => ..., bottom => ..., near => ..., far => ...,
-    x => ..., y => ..., z => ...,
+    left => ..., right => ..., top => ..., bottom => ...,
+    near => ..., far => ..., z => ...,
     aspect => ..., mirror_x => $bool, mirror_y => $bool,
   );
 
 If C<ortho> is true, it calls C<glOrtho>, else C<glFrustum>.
 The C<left>, C<right>, C<top>, C<bottom>, C<near>, C<far> parameters are as
-documented for these functions.
+documented for these functions, B<but> if you request a Frustum and specify a
+non-zero C<z> then it scales the parameters so that a vertex C<($left,$top,$z)>
+displays at the upper-left corner of the screen.  (normally the upper left
+would be C<($left,$top,$near)>)  This allows you to separate the near clipping
+plane from the plane you use to scale your coordinates.
 
 If you specify C<x>, C<y>, or C<z>, it calls C<glTranslated(-x,-y,-z)> after
 the C<glFrustum> or C<glOrtho>.
@@ -541,16 +545,28 @@ sub apply_gl_projection {
 	($t, $b)= ($b, $t) if $mirror_y;
 	$near= 1 unless defined $near;
 	$far= 1000 unless defined $far;
+	defined $_ or $_= 0
+		for ($x, $y, $z);
 	
-	$log->tracef('Setting projection matrix: l=%.4lf r=%.4lf b=%.4lf t=%.4lf near=%.4lf far=%.4lf',
-		$l, $r, $b, $t, $near, $far);
+	# If Z is specified, then the left/right/top/bottom are interpreted to be the
+	# edges of the screen at this position.  Only matters for Frustum.
+	if ($z && !$ortho) {
+		my $scale= 1.0/$z;
+		$l *= $scale;
+		$r *= $scale;
+		$t *= $scale;
+		$b *= $scale;
+	}
+	
+	$log->tracef('Setting projection matrix: l=%.4lf r=%.4lf b=%.4lf t=%.4lf near=%.4lf far=%.4lf; translate %.4lf,%.4lf,%.4lf',
+		$l, $r, $b, $t, $near, $far, -$x, -$y, -$z);
 	OpenGL::glMatrixMode(OpenGL::GL_PROJECTION());
 	OpenGL::glLoadIdentity();
 	
 	$ortho? OpenGL::glOrtho($l, $r, $b, $t, $near, $far)
 	      : OpenGL::glFrustum($l, $r, $b, $t, $near, $far);
 	
-	OpenGL::glTranslated(-($x||0), -($y||0), -($z||0))
+	OpenGL::glTranslated(-$x, -$y, -$z)
 		if $x or $y or $z;
 	
 	# If mirror is in effect, need to tell OpenGL which way the camera is

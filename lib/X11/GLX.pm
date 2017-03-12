@@ -5,7 +5,7 @@ use X11::Xlib 0.09;
 
 # ABSTRACT - GLX API (OpenGL on X11)
 
-our $VERSION= '0.00_02';
+our $VERSION= '0.00_03';
 
 use Exporter 'import';
 our %EXPORT_TAGS= (
