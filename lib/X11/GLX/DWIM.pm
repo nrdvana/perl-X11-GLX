@@ -6,7 +6,7 @@ use Moo;
 use Carp;
 use Log::Any '$log';
 
-our $VERSION= '0.00_03';
+our $VERSION= '0.00_04';
 
 # ABSTRACT - Do What I Mean, with OpenGL on X11
 
