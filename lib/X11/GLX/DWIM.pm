@@ -449,11 +449,11 @@ hash of the symbolic names of the error constants.
 =cut
 
 my %_gl_err_msg= (
-	map { eval { OpenGL->$_() => $_ } } qw(
+	map { eval { OpenGL->can($_)->() => $_ } } qw(
 		GL_INVALID_ENUM
 		GL_INVALID_VALUE
 		GL_INVALID_OPERATION
-		GL_INVALIDFRAMEBUFFER_OPERATION
+		GL_INVALID_FRAMEBUFFER_OPERATION
 		GL_OUT_OF_MEMORY
 		GL_STACK_OVERFLOW
 		GL_STACK_UNDERFLOW
