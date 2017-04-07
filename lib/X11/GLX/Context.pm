@@ -1,9 +1,8 @@
 package X11::GLX::Context;
-require X11::GLX; # all comes from XS.  don't need to load this file.
-# ABSTRACT - Opaque wrapper for GLXContext pointer
 
-1;
-__END__
+require X11::GLX; # all comes from XS.  don't need to load this file.
+
+# ABSTRACT: Opaque wrapper for GLXContext pointer
 
 =head1 DESCRIPTION
 
@@ -24,3 +23,5 @@ The X11 ID of the GLX context.  This is not available unless you have the
 GLX_EXT_import_context extension.
 
 =cut
+
+1;

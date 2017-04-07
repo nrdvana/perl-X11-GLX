@@ -1,14 +1,12 @@
 package X11::GLX::DWIM;
-use X11::Xlib 0.10;
+
 use X11::GLX;
 use OpenGL;
 use Moo;
 use Carp;
 use Log::Any '$log';
 
-our $VERSION= '0.01';
-
-# ABSTRACT - Do What I Mean, with OpenGL on X11
+# ABSTRACT: Do What I Mean, with OpenGL on X11
 
 =head1 SYNOPSIS
 

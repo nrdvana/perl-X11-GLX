@@ -1,11 +1,10 @@
 package X11::GLX;
+
 use strict;
 use warnings;
-use X11::Xlib 0.09;
+use X11::Xlib 0.11;
 
-# ABSTRACT - GLX API (OpenGL on X11)
-
-our $VERSION= '0.01';
+# ABSTRACT: GLX API (OpenGL on X11)
 
 use Exporter 'import';
 our %EXPORT_TAGS= (
@@ -28,7 +27,7 @@ $EXPORT_TAGS{constants}= [ grep { /^GLX/ } @EXPORT_OK ];
 $EXPORT_TAGS{all}= \@EXPORT_OK;
 
 require XSLoader;
-XSLoader::load('X11::GLX', $VERSION);
+XSLoader::load('X11::GLX', $X11::GLX::VERSION);
 
 BEGIN { @X11::GLX::Context::Imported::ISA= ('X11::GLX::Context'); }
 require X11::GLX::Pixmap;
