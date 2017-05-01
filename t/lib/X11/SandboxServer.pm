@@ -40,7 +40,7 @@ sub DESTROY {
 }
 
 sub display_num { shift->{display_num}; }
-sub display_string { ':'.shift->display_num; }
+sub display_string { ':'.(shift->display_num); }
 
 sub connection { shift->{connection}; }
 
@@ -64,7 +64,8 @@ sub new {
     # No good way to determine which display numbers are free, when other
     # test cases might be running in parallel, so just iterate 10 times and give up.
     my ($dpy, $disp_num, $pid);
-    for $disp_num (1..11) {
+    for (1..11) {
+        $disp_num= $_;
         # Can't find any way to start it and connect without a race condition.
         # Some other server could be occupting the display number, and then Xephyr
         # would fail even if we are able to connect, and if the system was lagged
@@ -89,7 +90,7 @@ sub new {
         waitpid($pid, 0) > 0 or die "waitpid: $!";
     }
     defined $dpy or croak("Can't start and connect to Xephyr");
-    
+
     return bless { display_num => $disp_num, connection => $dpy, pid => $pid }, $class;
 }
 
