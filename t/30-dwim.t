@@ -4,7 +4,10 @@ use warnings;
 use Test::More;
 use X11::GLX::DWIM;
 use Log::Any::Adapter 'TAP';
+use FindBin;
+use lib "$FindBin::Bin/lib";
 use OpenGL qw( :glconstants :glfunctions );
+use OpenGL::Model::Cube;
 
 plan skip_all => "No X11 Server available"
 	unless defined $ENV{DISPLAY};
@@ -34,32 +37,7 @@ sub cube {
 	} else {
 		$cube_dlist= glGenLists(1);
 		glNewList($cube_dlist, GL_COMPILE_AND_EXECUTE);
-		glBegin(GL_QUADS);
-		glTexCoord2d(0,0); glVertex3d(0,0,1); # front
-		glTexCoord2d(1,0); glVertex3d(1,0,1);
-		glTexCoord2d(1,1); glVertex3d(1,1,1);
-		glTexCoord2d(0,1); glVertex3d(0,1,1);
-		glTexCoord2d(0,0); glVertex3d(1,0,1); # right
-		glTexCoord2d(1,0); glVertex3d(1,0,0);
-		glTexCoord2d(1,1); glVertex3d(1,1,0);
-		glTexCoord2d(0,1); glVertex3d(1,1,1);
-		glTexCoord2d(0,0); glVertex3d(0,0,0); # back
-		glTexCoord2d(1,0); glVertex3d(0,1,0);
-		glTexCoord2d(1,1); glVertex3d(1,1,0);
-		glTexCoord2d(0,1); glVertex3d(1,0,0);
-		glTexCoord2d(0,0); glVertex3d(0,0,0); # left
-		glTexCoord2d(1,0); glVertex3d(0,0,1);
-		glTexCoord2d(1,1); glVertex3d(0,1,1);
-		glTexCoord2d(0,1); glVertex3d(0,1,0);
-		glTexCoord2d(0,0); glVertex3d(0,1,0); # top
-		glTexCoord2d(1,0); glVertex3d(0,1,1);
-		glTexCoord2d(1,1); glVertex3d(1,1,1);
-		glTexCoord2d(0,1); glVertex3d(1,1,0);
-		glTexCoord2d(0,0); glVertex3d(0,0,0); # bottom
-		glTexCoord2d(1,0); glVertex3d(1,0,0);
-		glTexCoord2d(1,1); glVertex3d(1,0,1);
-		glTexCoord2d(0,1); glVertex3d(0,0,1);
-		glEnd();
+		OpenGL::Model::Cube->draw;
 		glEndList();
 	}
 }
