@@ -3,6 +3,7 @@ GLXContext            O_GLXContext
 GLXContextOrNull      O_GLXContextOrNull
 GLXContextImported    O_GLXContextImported
 GLXContextID          O_X11_Xlib_XID
+GLXFBConfig           O_GLXFBConfig
 
 INPUT
 O_GLXContext
@@ -37,3 +38,11 @@ O_GLXContextImported
 OUTPUT
 O_GLXContextImported
 	sv_setref_pv($arg, \"X11::GLX::Context::Imported\", (void*) $var);
+
+INPUT
+O_GLXFBConfig
+	if (sv_isa($arg, \"X11::GLX::FBConfig\")) {
+		$var= ($type) SvIV((SV*)SvRV($arg));
+	} else {
+		croak( \"%s is not a %s\", \"$var\", \"X11::GLX::FBConfig\" );
+	}

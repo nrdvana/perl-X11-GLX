@@ -78,6 +78,89 @@ glXChooseVisual(dpy, screen=DefaultScreen(dpy), attrs=NULL)
 		PUSHs( sv_2mortal( sv_setref_pvn(newSV(0), "X11::Xlib::XVisualInfo", (void*)match, sizeof(XVisualInfo)) ) );
 		XFree(match);
 
+#ifdef GLX_VERSION_1_3
+
+void
+glXChooseFBConfig(dpy, screen, attr_av)
+	Display *dpy
+	ScreenNumber screen
+	AV *attr_av
+	INIT:
+		int *attr_array;
+		int i, n_elem;
+		SV **elem, *dpy_sv, *fb;
+		GLXFBConfig *cfgs;
+	PPCODE:
+		dpy_sv= ST(0);
+		/* Re-package attr_av into int[] */
+		n_elem= av_len(attr_av)+1;
+		Newx(attr_array, n_elem+1, int);
+		SAVEFREEPV(attr_array);
+		for (i= 0; i < n_elem; i++) {
+			elem= av_fetch(attr_av, i, 0);
+			if (!elem || !*elem) croak("Can't access attrib %d", i);
+			attr_array[i]= SvIV(*elem);
+		}
+		attr_array[n_elem]= None; /* in case user didn't 'None'-terminate the list */
+		cfgs= glXChooseFBConfig(dpy, screen, attr_array, &n_elem);
+		if (cfgs) {
+			EXTEND(SP, n_elem);
+			for (i= 0; i < n_elem; i++)
+				PUSHs(PerlXlib_obj_for_display_innerptr(dpy, cfgs[i], "X11::GLX::FBConfig", SVt_PVMG, 1));
+			XFree(cfgs);
+		}
+
+void
+glXGetFBConfigs(dpy, screen= -1)
+	Display *dpy
+	ScreenNumber screen
+	INIT:
+		GLXFBConfig *cfgs;
+		int n_elem, i;
+		SV *fb;
+	PPCODE:
+		cfgs= glXGetFBConfigs(dpy, screen, &n_elem);
+		if (cfgs) {
+			EXTEND(SP, n_elem);
+			for (i= 0; i < n_elem; i++)
+				PUSHs(PerlXlib_obj_for_display_innerptr(dpy, cfgs[i], "X11::GLX::FBConfig", SVt_PVMG, 1));
+			/* no indication in docs that we should free cfg ... */
+		}
+
+int
+glXGetFBConfigAttrib(dpy, fbcfg, attr, value_sv)
+	Display *dpy
+	GLXFBConfig fbcfg
+	int attr
+	SV *value_sv
+	INIT:
+		int value;
+	CODE:
+		RETVAL= glXGetFBConfigAttrib(dpy, fbcfg, attr, &value);
+		if (RETVAL == Success)
+			sv_setiv(value_sv, value);
+	OUTPUT:
+		RETVAL
+
+void
+glXGetVisualFromFBConfig(dpy, fbcfg)
+	Display *dpy
+	GLXFBConfig fbcfg
+	INIT:
+		XVisualInfo *vis;
+		SV *dpy_sv, *vis_sv;
+	PPCODE:
+		dpy_sv= ST(0);
+		vis= glXGetVisualFromFBConfig(dpy, fbcfg);
+		if (vis) {
+			vis_sv= sv_setref_pvn(newSV(0), "X11::Xlib::XVisualInfo", (void*) vis, sizeof(XVisualInfo));
+			PUSHs(sv_2mortal(vis_sv));
+			XFree(vis);
+			PerlXlib_set_displayobj_of_opaque(SvRV(vis_sv), dpy_sv);
+		}
+
+#endif /* GLX_VERSION_1_3 */
+
 GLXContext
 glXCreateContext(dpy, vis_info, shared, direct)
 	Display *dpy

@@ -57,8 +57,9 @@ our %EXPORT_TAGS= (
 # BEGIN GENERATED XS FUNCTION LIST
   fn_import_cx => [qw( glXFreeContextEXT glXGetContextIDEXT glXImportContextEXT
     glXQueryContextInfoEXT )],
-  fn_std => [qw( glXChooseVisual glXCreateContext glXCreateGLXPixmap
-    glXDestroyContext glXDestroyGLXPixmap glXMakeCurrent
+  fn_std => [qw( glXChooseFBConfig glXChooseVisual glXCreateContext
+    glXCreateGLXPixmap glXDestroyContext glXDestroyGLXPixmap
+    glXGetFBConfigAttrib glXGetVisualFromFBConfig glXMakeCurrent
     glXQueryExtensionsString glXQueryVersion glXSwapBuffers )],
 # END GENERATED XS FUNCTION LIST
 );
@@ -72,6 +73,7 @@ XSLoader::load('X11::GLX', $X11::GLX::VERSION);
 
 BEGIN { @X11::GLX::Context::Imported::ISA= ('X11::GLX::Context'); }
 require X11::GLX::Pixmap;
+require X11::GLX::FBConfig;
 
 __END__
 
@@ -112,6 +114,48 @@ automatically.  If undefined, this module uses a default of:
 
   [ GLX_USE_GL, GLX_RGBA, GLX_DOUBLEBUFFER,
     GLX_RED_SIZE, 8, GLX_GREEN_SIZE, 8, GLX_BLUE_SIZE, 8, GLX_ALPHA_SIZE, 8 ]
+
+Returns an L<XVisualInfo|X11::Xlib::XVisualInfo>, or empty list on failure.
+
+This method is deprecated in GLX 1.3 in favor of glXChooseFBConfig.
+
+=head2 glXChooseFBConfig
+
+  if ($glx_version >= 1.3) {
+	my @configs= glXChooseFBConfig($display, $screen, \@attributes);
+  }
+
+Return a list of compatible framebuffer configurations (L<GLXFBConfig|X11::GLX::GLXFBConfig>)
+matching the desired C<@attributes>.
+This method deals with lower level details than glXChooseVisual,
+needed for more advanced GL usage like rendering a fully transparent window.
+For C<@attributes>, consult the L<khronos docs|http://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/glXChooseFBConfig.xml>
+
+Returns an empty list on failure.
+
+=head2 glXGetFBConfigs
+
+  my @fbconfigs= glXGetFBConfigs($display, $screen);
+
+Return all GLXFBConfig available on this screen.
+
+=head2 glXGetFBConfigAttrib
+
+  glXGetFBConfigAttrib($display, $fbconfig, $attr_id, my $value) == Success
+	or die "glXGetFBConfigAttrib failed";
+
+Yes you read that right.  Horribly awkward interface for accessing attributes
+of a struct.  Use the attributes of L<GLXFBConfig|X11::GLX::GLXFBConfig> instead.
+
+=head2 glXGetVisualFromFBConfig
+
+  if ($glx_version >= 1.3) {
+	my $vis_info= glXGetVisualFromFBConfig($display, $glxfbconfig);
+	# It's an XVisualInfo, not Visual, despite the name
+  }
+
+Return the L<XVisualInfo|X11::Xlib::XVisualInfo> associated with the
+L<FBConfig|X11::GLX::GLXFBConfig>.
 
 =head2 glXCreateContext
 
