@@ -1,12 +1,13 @@
 #! /usr/bin/env perl
-
 use strict;
 use warnings;
 use Test::More;
-use X11::Xlib;
 use X11::GLX::DWIM;
 use Log::Any::Adapter 'TAP';
-use OpenGL ':all';
+use OpenGL qw( :glconstants :glfunctions );
+
+plan skip_all => "No X11 Server available"
+	unless defined $ENV{DISPLAY};
 
 my $dwim= new_ok( 'X11::GLX::DWIM', [ gl_projection => {} ] );
 

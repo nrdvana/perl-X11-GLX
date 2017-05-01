@@ -1,10 +1,13 @@
 #! /usr/bin/env perl
-
 use strict;
 use warnings;
-use Test::More tests => 11;
+use Test::More;
 use X11::Xlib;
 use X11::GLX ':all';
+
+plan skip_all => "No X11 Server available"
+	unless defined $ENV{DISPLAY};
+plan tests => 11;
 
 ok( my $dpy= X11::Xlib->new, 'X11 connection' );
 
