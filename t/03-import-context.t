@@ -39,12 +39,16 @@ if (!$pid) {
 	# Can't get Test::More to play nicely with child proc...
 	my $n= 0;
 	my $indent= "    ";
+	sub note($) { print "$indent# $_[0]\n"; }
 	sub ok { my ($bool, $msg)= @_; print($indent.($bool? "ok ":"not ok ").++$n." - $msg\n"); }
-	sub is { my ($val, $expect, $msg)= @_; print($indent.($val eq $expect? "ok ":"not ok ").++$n." - $msg\n"); }
+	sub is {
+		my ($val, $expect, $msg)= @_; print($indent.($val eq $expect? "ok ":"not ok ").++$n." - $msg\n");
+		if ($val ne $expect) { note "'$val' is not '$expect'"; }
+	}
 	sub isa_ok { my ($obj, $cls, $msg)= @_; print($indent.(ref($obj)->isa($cls)? "ok ":"not ok ").++$n." - $msg is a $cls\n"); }
 	
 	my $cx_id= 0 + $ARGV[0];
-	print "$indent# Connecting to shared context ID $cx_id\n";
+	note "Connecting to shared context ID $cx_id";
 	ok( my $dpy2= X11::Xlib->new, "new X11::Xlib" );
 	ok( my $remote_cx= glXImportContextEXT($dpy2, $cx_id), 'glXImportContextEXT' );
 	isa_ok( $remote_cx, 'X11::GLX::Context::Imported', 'remote_cx' );

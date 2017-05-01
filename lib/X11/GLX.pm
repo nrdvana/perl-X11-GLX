@@ -71,7 +71,7 @@ $EXPORT_TAGS{all}= \@EXPORT_OK;
 require XSLoader;
 XSLoader::load('X11::GLX', $X11::GLX::VERSION);
 
-BEGIN { @X11::GLX::Context::Imported::ISA= ('X11::GLX::Context'); }
+require X11::GLX::Context;
 require X11::GLX::Pixmap;
 require X11::GLX::FBConfig;
 

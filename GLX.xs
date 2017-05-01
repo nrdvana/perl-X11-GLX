@@ -163,29 +163,36 @@ glXGetVisualFromFBConfig(dpy, fbcfg)
 
 #endif /* GLX_VERSION_1_3 */
 
-GLXContext
+void
 glXCreateContext(dpy, vis_info, shared, direct)
 	Display *dpy
 	XVisualInfo *vis_info
 	GLXContextOrNull shared
 	Bool direct
+	INIT:
+		SV *cx_obj;
+	PPCODE:
+		GLXContext cx= glXCreateContext(dpy, vis_info, shared, direct);
+		if (cx) {
+			cx_obj= PerlXlib_obj_for_display_innerptr(dpy, cx, "X11::GLX::Context", SVt_PVHV, 1);
+			PUSHs(cx_obj);
+			/* set autofree, by default */
+			hv_stores((HV*)SvRV(cx_obj), "autofree", newSViv(1));
+		}
+		else {
+			PUSHs(&PL_sv_undef);
+		}
 
 void
-glXDestroyContext(dpy, cx_sv)
+glXDestroyContext(dpy, cx)
 	Display *dpy
-	SV *cx_sv
+	GLXContext cx
+	INIT:
+		SV *cx_sv= ST(1);
 	CODE:
-		if (!sv_derived_from(cx_sv, "X11::GLX::Context"))
-			croak("second argument must be a GLX::Context");
-		if (!SvIV(SvRV(cx_sv)))
-			croak("Attempt to destroy X11::GLX::Context twice");
-		glXDestroyContext(dpy, (GLXContext) (void*) SvIV(SvRV(cx_sv)));
-		// If it was imported, then also free it
-		if (sv_isa(cx_sv, "X11::GLX::Context::Imported"))
-			glXFreeContextEXT(dpy, (GLXContext) (void*) SvIV(SvRV(cx_sv)));
-		else
-			// Now, null the pointer to mark it as being properly freed
-			SvIV_set(SvRV(cx_sv), 0);
+		glXDestroyContext(dpy, cx);
+		/* Now, null the pointer to mark it as being properly freed */
+		PerlXlib_set_magic_dpy_innerptr(cx_sv, NULL);
 
 Bool
 glXMakeCurrent(dpy, xid= None, cx= NULL)
@@ -225,17 +232,15 @@ glXImportContextEXT(dpy, cx_id)
 	GLXContextID cx_id
 
 void
-glXFreeContextEXT(dpy, cx_sv)
+glXFreeContextEXT(dpy, cx)
 	Display *dpy
-	SV *cx_sv
+	GLXContextImported cx
+	INIT:
+		SV *cx_sv= ST(1);
 	CODE:
-		if (!sv_isa(cx_sv, "X11::GLX::Context::Imported"))
-			croak("argument must be a GLX::Context::Imported");
-		if (!SvIV(SvRV(cx_sv)))
-			croak("Attempt to destroy GLX::Context twice");
-		glXFreeContextEXT(dpy, (GLXContext) (void*) SvIV(SvRV(cx_sv)));
-		// Now, null the pointer to mark it as being properly freed
-		SvIV_set(SvRV(cx_sv), 0);
+		glXFreeContextEXT(dpy, cx);
+		/* Now, null the pointer to mark it as being properly freed */
+		PerlXlib_set_magic_dpy_innerptr(cx_sv, NULL);
 
 int
 glXQueryContextInfoEXT(dpy, cx, attr_id, val_out_sv)
@@ -263,21 +268,13 @@ id(self)
 	OUTPUT:
 		RETVAL
 
-void
-DESTROY(self)
-	GLXContext self
+bool
+_already_freed(cx)
+	GLXContextOrNull cx
 	CODE:
-		// Display pointer is required to free a GLXContext.  Must be handled by perl code.
-		if (self) croak("Memory leak! incorrect destruction of GLX::Context");
-
-MODULE = X11::GLX                     PACKAGE = X11::GLX::Context::Imported
-
-void
-DESTROY(self)
-	GLXContext self
-	CODE:
-		// Display pointer is required to free a GLXContext.  Must be handled by perl code.
-		if (self) croak("Memory leak! incorrect destruction of GLX::Context::Imported");
+		RETVAL = !cx;
+	OUTPUT:
+		RETVAL
 
 MODULE = X11::GLX                     PACKAGE = X11::GLX::DWIM
 
