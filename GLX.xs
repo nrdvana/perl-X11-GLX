@@ -161,6 +161,28 @@ glXGetVisualFromFBConfig(dpy, fbcfg)
 			PerlXlib_set_displayobj_of_opaque(SvRV(vis_sv), dpy_sv);
 		}
 
+void
+glXCreateNewContext(dpy, fbcfg, render_type, shared, direct)
+	Display *dpy
+	GLXFBConfig fbcfg
+	int render_type
+	GLXContextOrNull shared
+	Bool direct
+	INIT:
+	INIT:
+		SV *cx_obj;
+	PPCODE:
+		GLXContext cx= glXCreateNewContext(dpy, fbcfg, render_type, shared, direct);
+		if (cx) {
+			cx_obj= PerlXlib_obj_for_display_innerptr(dpy, cx, "X11::GLX::Context", SVt_PVHV, 1);
+			PUSHs(cx_obj);
+			/* set autofree, by default */
+			hv_stores((HV*)SvRV(cx_obj), "autofree", newSViv(1));
+		}
+		else {
+			PUSHs(&PL_sv_undef);
+		}
+
 #endif /* GLX_VERSION_1_3 */
 
 void

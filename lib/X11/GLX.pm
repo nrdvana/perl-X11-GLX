@@ -58,9 +58,10 @@ our %EXPORT_TAGS= (
   fn_import_cx => [qw( glXFreeContextEXT glXGetContextIDEXT glXImportContextEXT
     glXQueryContextInfoEXT )],
   fn_std => [qw( glXChooseFBConfig glXChooseVisual glXCreateContext
-    glXCreateGLXPixmap glXDestroyContext glXDestroyGLXPixmap
-    glXGetFBConfigAttrib glXGetVisualFromFBConfig glXMakeCurrent
-    glXQueryExtensionsString glXQueryVersion glXSwapBuffers )],
+    glXCreateGLXPixmap glXCreateNewContext glXDestroyContext
+    glXDestroyGLXPixmap glXGetFBConfigAttrib glXGetFBConfigs
+    glXGetVisualFromFBConfig glXMakeCurrent glXQueryExtensionsString
+    glXQueryVersion glXSwapBuffers )],
 # END GENERATED XS FUNCTION LIST
 );
 our @EXPORT_OK= map { @$_ } values %EXPORT_TAGS;
