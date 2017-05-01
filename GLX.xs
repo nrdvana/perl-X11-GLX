@@ -45,10 +45,10 @@ glXChooseVisual(dpy, screen=DefaultScreen(dpy), attrs=NULL)
 	int screen
 	SV *attrs
 	INIT:
-		SV *tmp, **ep;
+		SV *tmp, **ep, *vis_sv, *dpy_sv;
 		AV *attr_av;
 		HV *attr_hv;
-		int i, n;
+		int i, n, *attr_array;
 		XVisualInfo *match;
 		int default_attrs[] = {
 			GLX_USE_GL, GLX_RGBA,
@@ -56,27 +56,29 @@ glXChooseVisual(dpy, screen=DefaultScreen(dpy), attrs=NULL)
 			GLX_DOUBLEBUFFER, None
 		};
 	PPCODE:
+		dpy_sv= ST(0);
 		if (!attrs || !SvOK(attrs)) {
 			match= glXChooseVisual(dpy, screen, default_attrs);
 		}
 		else if (SvROK(attrs) && (SvTYPE(attrs) == SVt_PVAV)) {
 			attr_av= (AV*) SvRV(attrs);
 			n= av_len(attr_av)+1;
-			tmp= sv_2mortal(newSV(0));
-			sv_grow(tmp, sizeof(int) * (n+1));
-			for (i= 0; i<n; i++) {
+			Newx(attr_array, n+1, int);
+			SAVEFREEPV(attr_array);
+			for (i= 0; i < n; i++) {
 				ep= av_fetch(attr_av, i, 0);
-				if (!ep)
-					croak("Found NULL in attributes array");
-				((int*)(void*)SvPVX(tmp))[i]= SvIV(*ep);
+				if (!ep || !*ep) croak("Can't access attrib %d", i);
+				attr_array[i]= SvIV(*ep);
 			}
-			((int*)(void*)SvPVX(tmp))[n]= None;
-			match= glXChooseVisual(dpy, screen, ((int*)(void*)SvPVX(tmp)));
+			attr_array[n]= None;
+			match= glXChooseVisual(dpy, screen, attr_array);
 		}
-		if (!match)
-			croak("glXChooseVisual failed");
-		PUSHs( sv_2mortal( sv_setref_pvn(newSV(0), "X11::Xlib::XVisualInfo", (void*)match, sizeof(XVisualInfo)) ) );
-		XFree(match);
+		if (match) {
+			vis_sv= sv_setref_pvn(newSV(0), "X11::Xlib::XVisualInfo", (void*)match, sizeof(XVisualInfo));
+			PUSHs(sv_2mortal(vis_sv));
+			XFree(match);
+			PerlXlib_set_displayobj_of_opaque(SvRV(vis_sv), dpy_sv);
+		}
 
 #ifdef GLX_VERSION_1_3
 
