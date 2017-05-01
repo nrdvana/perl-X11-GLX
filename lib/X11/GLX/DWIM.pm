@@ -156,7 +156,7 @@ Destroy the current GLX context, also clearing the L</target>.
 =cut
 
 has _glx_context_args => ( is => 'ro', init_arg => 'glx_context' );
-has glx_context => ( is => 'rw', lazy => 1, builder => 1, clearer => 1, predicate => 1 );
+has glx_context => ( is => 'rw', init_arg => undef, lazy => 1, builder => 1, clearer => 1, predicate => 1 );
 
 before 'clear_glx_context' => sub {
 	my $self= shift;
@@ -242,7 +242,7 @@ Use this to un-set the target.
 =cut
 
 has _target_args => ( is => 'rw', init_arg => 'target' );
-has target => ( is => 'rw', clearer => 1, predicate => 1, reader => '_get_target', writer => '_set_target' );
+has target => ( is => 'rw', init_arg => undef, clearer => 1, predicate => 1, reader => '_get_target', writer => '_set_target' );
 
 before clear_target => sub {
 	if ($_[0]->has_target) {
@@ -297,7 +297,7 @@ Defaults to GL_COLOR_BUFFER_BIT + GL_DEPTH_BUFFER_BIT
 
 =cut
 
-has gl_clear_bits     => ( is => 'lazy' );
+has gl_clear_bits     => ( is => 'rw', lazy => 1, builder => 1 );
 sub _build_gl_clear_bits {
 	return OpenGL::GL_COLOR_BUFFER_BIT|OpenGL::GL_DEPTH_BUFFER_BIT;
 }
