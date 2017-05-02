@@ -1,8 +1,7 @@
 package X11::GLX::DWIM;
-
+use Moo 2;
 use X11::GLX;
-use OpenGL;
-use Moo;
+use OpenGL ();
 use Carp;
 use Log::Any '$log';
 
@@ -58,15 +57,23 @@ sub _build_screen { shift->display->screen }
 
 The GLX version number.  Read-only, lazy-built from L</display>.
 
+=head2 glx_version_bcd
+
+The GLX version in C<major * 100 + minor> binary-coded-decimal format.
+Useful for comparing version numbers without worrying about floating
+point rounding errors.
+
 =cut
 
-has glx_version => ( is => 'lazy' );
-sub _build_glx_version {
+has _glx_version => ( is => 'lazy' );
+sub _build__glx_version {
 	X11::GLX::glXQueryVersion(shift->display, my $major, my $minor);
 	$log->tracef('GLX Version %d.%d', $major, $minor)
 		if $log->is_trace;
-	return "$major.$minor";
+	return [ $major, $minor ];
 }
+sub glx_version { join ".", @{ shift->_glx_version } }
+sub glx_version_bcd { my $v= shift->_glx_version; $v->[0] * 100 + $v->[1] }
 
 =head2 glx_extensions
 
@@ -81,6 +88,18 @@ sub _build_glx_extensions {
 	X11::GLX::glXQueryExtensionsString(shift->display);
 }
 
+=head2 fbconfig
+
+  X11::GLX::DWIM->new( fbconfig => $fbconfig )
+  X11::GLX::DWIM->new( fbconfig => \@glx_fbconfig_flags )
+
+Lazy-built, read-only.  Instance of L<X11::Xlib::FBConfig>.
+Can be initialized with an arrayref of parameters (integer codes) to pass to
+L<glXChooseFBConfig|X11::GLX/glXChooseFBConfig>.
+
+Will be C<undef> unless GLX version is 1.3 or higher, since FBConfig was not
+introduced until this version.
+
 =head2 visual_info
 
   X11::GLX::DWIM->new( visual_info => $vis )
@@ -92,20 +111,96 @@ Can be initialized with an arrayref of parameters (integer codes) to pass to
 L<glXChooseVisual|X11::GLX/glXChooseVisual>, or with a hashref of fields to
 pass to the constructor of C<XVisualInfo>.
 
+If you have GLX 1.3 or higher, any initializer for this attribute will instead be
+converted to the appropriate L<glXChooseFBConfig|X11::GLX/glXChooseFBConfig>
+arguments and the resulting visual_info will come from C<< ->fbconfig->visual_info >>.
+
 =cut
 
+has _fbconfig_args    => ( is => 'ro', init_arg => 'fbconfig' );
+has fbconfig          => ( is => 'lazy', init_arg => undef );
 has _visual_info_args => ( is => 'ro', init_arg => 'visual_info' );
-has visual_info => ( is => 'lazy', init_arg => undef );
+has visual_info       => ( is => 'lazy', init_arg => undef );
+
+sub _build_fbconfig {
+	my $self= shift;
+	# Need GLX 1.3 in order to do FBConfigs
+	return undef unless $self->glx_version_bcd >= 103 && X11::GLX->can('glXChooseFBConfig');
+	
+	my $arg= $self->_fbconfig_args;
+	if (!$arg) {
+		if (defined $self->_visual_info_args) {
+			croak("TODO: convert visual_info args to fbconfig");
+		} else {
+			$arg= [
+				X11::GLX::GLX_DOUBLEBUFFER => 1,
+				X11::GLX::GLX_RED_SIZE => 8,
+				X11::GLX::GLX_GREEN_SIZE => 8,
+				X11::GLX::GLX_BLUE_SIZE => 8,
+#				X11::GLX::GLX_ALPHA_SIZE => 8,
+			];
+		}
+	}
+	
+	return $arg if ref($arg) && ref($arg)->isa('X11::GLX::FBConfig');
+	
+	# ChooseFBConfig returns multiple options.  Try to find one with a std X11
+	# visual, and if the user asked for alpha then prefer one that can do XRender
+	# with an alpha channel.
+	$log->tracef('Calling glXChooseFBConfig');
+	my @fbc= X11::GLX::glXChooseFBConfig($self->display, $self->screen->screen_number, $arg);
+	$log->tracef(" found %d matching fbconfigs", scalar @fbc);
+	
+	my @fbc_with_visual= grep { $_->visual_id } @fbc;
+	$log->tracef(" %d of which have an X11 Visual", scalar @fbc_with_visual);
+	
+	# Does the user want a drawable with alpha?
+	my $ret;
+	my $want_alpha= 0;
+	for (0..$#$arg) {
+		if ($arg->[$_] == X11::GLX::GLX_ALPHA_SIZE && $_ < $#$arg && $arg->[$_+1] > 0) {
+			$want_alpha= 1;
+		}
+	}
+	# If XRender extension is available on both client and server, check picture format for alpha mask
+	if ($want_alpha and X11::Xlib->can('XRenderFindVisualFormat') and $self->display->XRenderQueryVersion()) {
+		$log->tracef("Calling XRenderFindVisualFormat for %d configs", scalar @fbc_with_visual);
+		my @fbc_xrender_alpha= grep {
+			my $fmt= $self->display->XRenderFindVisualFormat($_->visual_info->visual);
+			$fmt && $fmt->direct_alphaMask
+		} @fbc_with_visual;
+		
+		$log->tracef(" %d have XRender picture formats with alpha channel", scalar @fbc_xrender_alpha);
+		$ret= $fbc_xrender_alpha[0] if @fbc_xrender_alpha;
+	}
+	$ret||= $fbc_with_visual[0] if @fbc_with_visual;
+	$ret||= $fbc[0] if @fbc;
+	defined $ret or croak "No matching FBConfig available on server";
+	
+	$log->tracef('Chose GLXFBConfig %d; dbl-buf=%d %dbpp r=%d g=%d b=%d a=%d',
+		$ret->xid, $ret->doublebuffer, $ret->buffer_size,
+		$ret->red_size, $ret->green_size, $ret->blue_size, $ret->alpha_size)
+		if $log->is_trace;
+	return $ret;
+}
 
 sub _build_visual_info {
 	my $self= shift;
+	# If GLX version is >= 1.3, use fbconfig instead
+	if ($self->glx_version_bcd >= 103 && X11::GLX->can('glXChooseFBConfig')) {
+		my $vis= $self->fbconfig->visual_info;
+		$log->tracef('Using visual %d (0x%X) from FBConfig', $vis->visualid, $vis->visualid)
+			if $log->is_trace;
+		return $vis;
+	}
+	
 	my $arg= $self->_visual_info_args;
 	$log->tracef('Calling glXChooseVisual with %s options', $arg? 'custom':'default');
 	my $vis_info= !$arg? X11::GLX::glXChooseVisual($self->display, $self->screen->screen_number)
 		: ref $arg eq 'ARRAY'? X11::GLX::glXChooseVisual($self->display, $self->screen->screen_number, $arg)
 		: ref($arg)->isa('X11::Xlib::Visual')? $self->display->visual_info($arg)
 		: croak "Can't convert $arg to XVisualInfo";
-	$log->tracef('Chose visual %d  (0x%X)', $vis_info->visualid, $vis_info->visualid)
+	$log->tracef('Chose visual %d (0x%X)', $vis_info->visualid, $vis_info->visualid)
 		if $log->is_trace;
 	return $vis_info;
 }
@@ -120,15 +215,18 @@ colormap compatible with L</visual_info>.
 has colormap => ( is => 'lazy' );
 sub _build_colormap {
 	my $self= shift;
-	$log->tracef("Creating colormap for visual %s", $self->visual_info->visual)
+	my $vis= $self->visual_info->visual;
+	$log->tracef("Creating colormap for visual %s", $vis->id)
 		if $log->is_trace;
-	$self->display->new_colormap($self->screen->root_window, $self->visual_info->visual);
+	$self->display->new_colormap($self->screen->root_window, $vis);
 }
 
 =head2 glx_context
 
 An instance of L<X11::GLX::Context>.  You can also initialize it with a hash
 of arguments for the call to L<glXCreateContext|X11::GLX/glXCreateContext>
+or L<glXCreateNewContext|X11::GLX/glXCreateNewContext>.  (the latter is used
+if GLX version is >= 1.3)
 
   $glx->glx_context({
     direct => $bool,            # for direct rendering ("DRI")
@@ -181,38 +279,40 @@ sub _build_glx_context {
 	ref($args) eq 'HASH' or croak "Don't know how to use $args as a glx_context";
 	my $direct= $args->{direct};
 	my $shared= $args->{shared};
+	my $fbc= $self->fbconfig;
 	my $vis= $self->visual_info;
 	
-	# If not shared, create context with default of direct-render
-	unless (defined $shared) {
+	# Determine default $direct based on $shared.
+	if (!defined $shared) {
 		$direct= 1 unless defined $direct;
-		$log->trace("Calling glXCreateContext shared= direct=$direct")
-			if $log->is_trace;
-		return X11::GLX::glXCreateContext($self->display, $vis, undef, $direct);
 	}
-	
-	if (!ref $shared || ref($shared)->isa('X11::Xlib::XID')) {
+	# IF $shared is an XID, then import it as a context so we can use it
+	elsif (!ref $shared || ref($shared)->isa('X11::Xlib::XID')) {
 		my $id= !ref($shared)? $shared : $shared->xid;
 		$direct= 0 unless defined $direct;
 		
 		$log->trace("Importing GLX context id=$id") if $log->is_trace;
-		my $remote_cx= X11::GLX::glXImportContextEXT($self->display, $id)
+		$shared= X11::GLX::glXImportContextEXT($self->display, $id)
 			or die "Can't import remote GLX context '$id'";
-		
-		$log->trace("Calling glXCreateContext shared=$remote_cx, direct=$direct") if $log->is_trace;
-		my $cx= X11::GLX::glXCreateContext($self->display, $vis, $remote_cx, $direct);
-		
-		$log->trace("Calling glXFreeContextEXT");
-		glXFreeContextEXT($remote_cx);
-		return $cx;
+		# destructor takes care of cleaning up $shared
 	}
 	elsif (ref($shared)->isa('X11::GLX::Context')) {
 		$direct= 0 unless defined $direct;
-		$log->trace("Calling glXCreateContext shared=$shared, direct=$direct") if $log->is_trace;
-		return X11::GLX::glXCreateContext($self->display, $vis, $shared, $direct);
 	}
 	else {
 		croak "Don't know how to share GLX context with $shared";
+	}
+	
+	if ($fbc) {
+		$log->tracef("Calling glXCreateNewContext config=%s render_type=GLX_RGBA_TYPE shared=%s direct=%s",
+			$fbc, $shared, $direct)
+			if $log->is_trace;
+		return X11::GLX::glXCreateNewContext($self->display, $fbc, X11::GLX::GLX_RGBA_TYPE, $shared, $direct);
+	} else {
+		$log->tracef("Calling glXCreateContext visual=%s shared=%s direct=%s",
+			$vis, $shared, $direct)
+			if $log->is_trace;
+		return X11::GLX::glXCreateContext($self->display, $vis, $shared, $direct);
 	}
 }
 
@@ -260,8 +360,19 @@ sub target {
 		}
 		my $value= $self->_inflate_target(@_? $_[0] : $self->_target_args);
 		if ($value->isa('X11::Xlib::Window')) {
+			# Request map events
+			my $evmask= $value->event_mask;
+			my $changed;
+			unless ($evmask | X11::Xlib::StructureNotifyMask) {
+				$changed= 1;
+				$value->event_mask($evmask | X11::Xlib::StructureNotifyMask);
+			}
 			$log->trace('Calling XMapWindow');
 			$value->show;
+			# wait for window to be mapped
+			$self->display->wait_event(window => $value->xid, event_type => X11::Xlib::MapNotify, timeout => 3);
+			# Restore previous event mask
+			$value->event_mask($evmask) if $changed;
 		}
 		$log->trace('Calling glXMakeCurrent');
 		X11::GLX::glXMakeCurrent($self->display, $value->xid, $self->glx_context)
@@ -299,7 +410,7 @@ Defaults to GL_COLOR_BUFFER_BIT + GL_DEPTH_BUFFER_BIT
 
 has gl_clear_bits     => ( is => 'rw', lazy => 1, builder => 1 );
 sub _build_gl_clear_bits {
-	return OpenGL::GL_COLOR_BUFFER_BIT|OpenGL::GL_DEPTH_BUFFER_BIT;
+	return OpenGL::GL_COLOR_BUFFER_BIT()|OpenGL::GL_DEPTH_BUFFER_BIT();
 }
 
 =head2 gl_projection
@@ -361,7 +472,8 @@ sub create_render_window {
 	$args{depth} ||= $self->visual_info->depth;
 	$args{min_width} ||= $args{width};
 	$args{min_height} ||= $args{height};
-	$log->tracef("create window: %s", \%args);
+	$log->tracef("create window: %s", { map { $_ => "$args{$_}" } keys %args })
+		if $log->is_trace;
 	return $self->display->new_window(%args);
 }
 
@@ -574,14 +686,12 @@ sub apply_gl_projection {
 
 sub DESTROY {
 	my $self= shift;
-	# Release resources in opposite order they were allocated
+	# Release resources in opposite order they were allocated.
+	# un-set target first so that it doesn't happen after the connection is already closed
 	$self->clear_target;
-	# The GLX context needs manually freed because the object doesn't
-	# hold a reference to the Display, which it needs in order to
-	# free the resource.
 	$self->clear_glx_context;
-	# The colormap has a strong ref to the Display handle, and the
-	# visual_info doesn't need freed.
+	# everything else can be freed in whichever order, and ->display will
+	# be freed last since visuals and fbconfigs hold a strong reference to it.
 }
 
 1;

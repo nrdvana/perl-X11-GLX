@@ -14,9 +14,9 @@ plan skip_all => "No X11 Server available"
 
 my $dwim= new_ok( 'X11::GLX::DWIM', [ gl_projection => {} ] );
 
-ok( $dwim->display );
-ok( $dwim->glx_context );
-ok( $dwim->target );
+ok( $dwim->display, 'open display' ); 
+ok( $dwim->glx_context, 'create gl context' ); $dwim->display->flush_sync;
+ok( $dwim->target, 'initialize gl target' ); $dwim->display->flush_sync;
 
 set_gl_options();
 
