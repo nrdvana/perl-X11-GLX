@@ -258,9 +258,11 @@ has glx_context => ( is => 'rw', init_arg => undef, lazy => 1, builder => 1, cle
 
 before 'clear_glx_context' => sub {
 	my $self= shift;
-	$self->clear_target;
-	$log->trace('destroying old GLX context');
-	X11::GLX::glXDestroyContext($self->display, $self->glx_context);
+	if ($self->has_glx_context) {
+		$self->clear_target;
+		$log->trace('destroying old GLX context');
+		X11::GLX::glXDestroyContext($self->display, $self->glx_context);
+	}
 };
 
 before 'glx_context' => sub {
@@ -358,27 +360,28 @@ sub target {
 		if (@_ && !defined $_[0]) {
 			croak("Call clear_target instead of setting to undef");
 		}
-		my $value= $self->_inflate_target(@_? $_[0] : $self->_target_args);
-		if ($value->isa('X11::Xlib::Window')) {
-			# Request map events
-			my $evmask= $value->event_mask;
+		my $target= $self->_inflate_target(@_? $_[0] : $self->_target_args);
+		if ($target->isa('X11::Xlib::Window')) {
+			# Enable listening to MapNotify events if weren't already selected
+			my $evmask= $target->event_mask;
 			my $changed;
-			unless ($evmask | X11::Xlib::StructureNotifyMask) {
+			unless ($evmask & X11::Xlib::StructureNotifyMask) {
 				$changed= 1;
-				$value->event_mask($evmask | X11::Xlib::StructureNotifyMask);
+				$target->event_mask($evmask | X11::Xlib::StructureNotifyMask);
 			}
 			$log->trace('Calling XMapWindow');
-			$value->show;
+			$target->show;
 			# wait for window to be mapped
-			$self->display->wait_event(window => $value->xid, event_type => X11::Xlib::MapNotify, timeout => 3);
+			$self->display->wait_event(window => $target->xid, event_type => X11::Xlib::MapNotify, timeout => 5, loop => 1)
+				or $log->warn("didn't get MapNotify event?");
 			# Restore previous event mask
-			$value->event_mask($evmask) if $changed;
+			$target->event_mask($evmask) if $changed;
 		}
 		$log->trace('Calling glXMakeCurrent');
-		X11::GLX::glXMakeCurrent($self->display, $value->xid, $self->glx_context)
-			or croak "Can't set target to $value, glXMakeCurrent failed";
-		$self->_set_target($value);
-		my ($w, $h)= $value->get_w_h;
+		X11::GLX::glXMakeCurrent($self->display, $target->xid, $self->glx_context)
+			or croak "Can't set target to $target, glXMakeCurrent failed";
+		$self->_set_target($target);
+		my ($w, $h)= $target->get_w_h;
 		$log->tracef('Calling glViewport(0, 0, %d, %d)', $w, $h);
 		OpenGL::glViewport(0, 0, $w, $h);
 		$self->apply_gl_projection if $self->gl_projection;
@@ -472,6 +475,9 @@ sub create_render_window {
 	$args{depth} ||= $self->visual_info->depth;
 	$args{min_width} ||= $args{width};
 	$args{min_height} ||= $args{height};
+	$args{border_pixel} ||= 0; # this seems to make the difference between succeeding and failing on 32bpp visuals??
+	$args{border_width} ||= 0;
+	$args{background_pixmap} ||= 0;
 	$log->tracef("create window: %s", { map { $_ => "$args{$_}" } keys %args })
 		if $log->is_trace;
 	return $self->display->new_window(%args);
