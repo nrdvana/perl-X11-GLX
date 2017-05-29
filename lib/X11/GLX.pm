@@ -175,6 +175,15 @@ context if setting it to true, and indeed won't if you are connected to a
 remote X11 server.  However if you set it to false this call may fail entirely
 if you are connected to a X11 server which has disabled indirect rendering.
 
+=head2 glXCreateNewContext
+
+  my $context= glXCreateNewContext($display, $fbconfig, $render_type, $share, $direct);
+
+Like L</glXCreateContext>, except it takes a C<X11::GLX::FBConfig> instead of
+a C<X11::Xlib::XVisualInfo>.  There is also a C<$render_type> that can be
+C<GLX_RGBA_TYPE> or C<GLX_COLOR_INDEX_TYPE>, but I'm not sure why anyone
+would ever be using the second one ;-)
+
 =head2 glXMakeCurrent
 
   glXMakeCurrent($display, $drawable, $glcontext)
