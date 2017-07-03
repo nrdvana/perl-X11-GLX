@@ -523,8 +523,8 @@ then clears the GL buffers.
 
 sub begin_frame {
 	my $self= shift;
-	$log->trace('begin_frame');
 	$self->target; # trigger lazy-build, connect, display window, etc
+	$log->trace('Calling glClear');
 	OpenGL::glClear($self->gl_clear_bits);
 }
 
