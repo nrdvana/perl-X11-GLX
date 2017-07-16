@@ -11,9 +11,6 @@ use parent 'X11::Xlib::Opaque';
 GLXContext is an opaque object used by the GLX API to reference the collection
 of state used for OpenGL rendering, usually by one thread onto one X11 window.
 
-The only method you can call on this object is "xid", since that is the only
-GLX function that doesn't also require a handle to the display.
-
 See L<X11::GLX::DWIM> for a convenient object-oriented interface to GLX that
 performs the things you probably want it to do.
 
@@ -21,7 +18,8 @@ performs the things you probably want it to do.
 
 =head2 display
 
-X11 connection this Context was created from.
+X11 connection this Context was created from.  Note that this object holds a
+strong reference to the Display.
 
 =head2 autofree
 
