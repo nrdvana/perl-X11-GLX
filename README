@@ -15,28 +15,28 @@ compiled by the same compiler as X11::Xlib.
 
 When distributed, all you should need to do is run
 
-  perl Makefile.PL
-  make install
+    perl Makefile.PL
+    make install
 
 or better,
 
-  cpanm X11-GLX.tar.gz
+    cpanm X11-GLX.tar.gz
 
-### Building
+### Developing
 
 However if you're trying to build from a fresh Git checkout, you'll need
 the Dist::Zilla tool (and many plugins) to create the Makefile.PL
 
-  cpanm Dist::Zilla
-  dzil listdeps | cpanm
-  dzil build
+    cpanm Dist::Zilla
+    dzil listdeps | cpanm
+    dzil build
 
 While Dist::Zilla takes the busywork and mistakes out of module authorship,
 it fails to address the need of XS authors to easily compile XS projects
 and run single testcases, rather than the whole test suite.  For this, you
 might find the following script handy:
 
-  ./dtest t/30-dwim.t  # or any other testcase
+    ./dtest t/30-dwim.t  # or any other testcase
 
 which runs "dzil build" to get a clean dist, then enters the build directory
 and runs "perl Makefile.PL" to compile the XS, then "prove -lvb t/30-dwim.t".
