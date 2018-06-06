@@ -169,7 +169,6 @@ glXCreateNewContext(dpy, fbcfg, render_type, shared, direct)
 	GLXContextOrNull shared
 	Bool direct
 	INIT:
-	INIT:
 		SV *cx_obj;
 	PPCODE:
 		GLXContext cx= glXCreateNewContext(dpy, fbcfg, render_type, shared, direct);
@@ -300,6 +299,27 @@ _already_freed(cx)
 
 MODULE = X11::GLX                     PACKAGE = X11::GLX::DWIM
 
+int
+_build_gl_clear_bits(self)
+	SV *self
+	CODE:
+		RETVAL = GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT;
+	OUTPUT:
+		RETVAL
+
+void
+_glClear(bits)
+	int bits
+	CODE:
+		glClear(bits);
+
+int
+_glGetError()
+	CODE:
+		RETVAL = glGetError();
+	OUTPUT:
+		RETVAL
+
 void
 _set_blank_cursor(dpy, wnd)
 	Display *dpy
@@ -325,6 +345,33 @@ void
 _const_unavailable()
 	PPCODE:
 		croak("Symbol not avilable on this version of GLX");
+
+void
+_set_projection_matrix(is_frustum, left, right, bottom, top, near, far, x, y, z, mirror_x, mirror_y)
+	int is_frustum
+	double left
+	double right
+	double bottom
+	double top
+	double near
+	double far
+	double x
+	double y
+	double z
+	int mirror_x
+	int mirror_y
+	CODE:
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		
+		if (is_frustum) glFrustum(left, right, bottom, top, near, far);
+		else glOrtho(left, right, bottom, top, near, far);
+		
+		if (x || y || z) glTranslated(-x, -y, -z);
+	
+		/* If mirror is in effect, need to tell OpenGL which way the camera is */
+		glFrontFace(mirror_x == mirror_y? GL_CCW : GL_CW);
+		glMatrixMode(GL_MODELVIEW);
 
 BOOT:
 # BEGIN GENERATED BOOT CONSTANTS
