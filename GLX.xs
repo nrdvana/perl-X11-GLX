@@ -1041,5 +1041,45 @@ BOOT:
 #else
   newXS("X11::GLX::GLX_FLOAT_COMPONENTS_NV", XS_X11__GLX__const_unavailable, file);
 #endif
+#ifdef GL_INVALID_ENUM
+  newCONSTSUB(stash, "GL_INVALID_ENUM", newSViv(GL_INVALID_ENUM));
+#else
+  newXS("X11::GLX::GL_INVALID_ENUM", XS_X11__GLX__const_unavailable, file);
+#endif
+#ifdef GL_INVALID_VALUE
+  newCONSTSUB(stash, "GL_INVALID_VALUE", newSViv(GL_INVALID_VALUE));
+#else
+  newXS("X11::GLX::GL_INVALID_VALUE", XS_X11__GLX__const_unavailable, file);
+#endif
+#ifdef GL_INVALID_OPERATION
+  newCONSTSUB(stash, "GL_INVALID_OPERATION", newSViv(GL_INVALID_OPERATION));
+#else
+  newXS("X11::GLX::GL_INVALID_OPERATION", XS_X11__GLX__const_unavailable, file);
+#endif
+#ifdef GL_INVALID_FRAMEBUFFER_OPERATION
+  newCONSTSUB(stash, "GL_INVALID_FRAMEBUFFER_OPERATION", newSViv(GL_INVALID_FRAMEBUFFER_OPERATION));
+#else
+  newXS("X11::GLX::GL_INVALID_FRAMEBUFFER_OPERATION", XS_X11__GLX__const_unavailable, file);
+#endif
+#ifdef GL_OUT_OF_MEMORY
+  newCONSTSUB(stash, "GL_OUT_OF_MEMORY", newSViv(GL_OUT_OF_MEMORY));
+#else
+  newXS("X11::GLX::GL_OUT_OF_MEMORY", XS_X11__GLX__const_unavailable, file);
+#endif
+#ifdef GL_STACK_OVERFLOW
+  newCONSTSUB(stash, "GL_STACK_OVERFLOW", newSViv(GL_STACK_OVERFLOW));
+#else
+  newXS("X11::GLX::GL_STACK_OVERFLOW", XS_X11__GLX__const_unavailable, file);
+#endif
+#ifdef GL_STACK_UNDERFLOW
+  newCONSTSUB(stash, "GL_STACK_UNDERFLOW", newSViv(GL_STACK_UNDERFLOW));
+#else
+  newXS("X11::GLX::GL_STACK_UNDERFLOW", XS_X11__GLX__const_unavailable, file);
+#endif
+#ifdef GL_TABLE_TOO_LARGE
+  newCONSTSUB(stash, "GL_TABLE_TOO_LARGE", newSViv(GL_TABLE_TOO_LARGE));
+#else
+  newXS("X11::GLX::GL_TABLE_TOO_LARGE", XS_X11__GLX__const_unavailable, file);
+#endif
 # END GENERATED BOOT CONSTANTS
 # ----------------------------------------------------------------------------
