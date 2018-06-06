@@ -1,3 +1,6 @@
+Version 0.05 - 2018-06-06
+ - Fix bugs in previous that broke error reporting
+
 Version 0.04 - 2018-06-06
  - Remove runtime dependency on OpenGL module, so that OpenGL::Modern
    may be used instead.  (OpenGL still required for test cases)
