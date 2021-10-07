@@ -19,6 +19,11 @@ typedef GLXContext GLXContextImported;
 
 MODULE = X11::GLX                  PACKAGE = X11::GLX
 
+void
+_const_unavailable()
+	PPCODE:
+		croak("Symbol not avilable on this version of GLX");
+
 # Standard GLX Functions (fn_std) --------------------------------------------
 
 Bool
@@ -313,6 +318,11 @@ _glClear(bits)
 	CODE:
 		glClear(bits);
 
+void
+_glFlush()
+	CODE:
+		glFlush();
+
 int
 _glGetError()
 	CODE:
@@ -340,11 +350,6 @@ _set_blank_cursor(dpy, wnd)
 			croak("XCreatePixmapCursor failed");
 		XDefineCursor(dpy, wnd, invisibleCursor);
 		XFreeCursor(dpy, invisibleCursor);
-
-void
-_const_unavailable()
-	PPCODE:
-		croak("Symbol not avilable on this version of GLX");
 
 void
 _set_projection_matrix(is_frustum, left, right, bottom, top, near, far, x, y, z, mirror_x, mirror_y)

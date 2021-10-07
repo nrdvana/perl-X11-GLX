@@ -537,6 +537,8 @@ sub end_frame {
 	my $self= shift;
 	$log->trace('Calling glXSwapBuffers');
 	X11::GLX::glXSwapBuffers($self->display, $self->target);
+	# export glFlush ourselves to avoid depending on OpenGL module
+	X11::GLX::DWIM::_glFlush();
 	my $e= $self->get_gl_errors;
 	$log->error("OpenGL error bits: ", join(', ', values %$e))
 		if $e;
@@ -577,6 +579,7 @@ my %_gl_err_msg= (
 
 sub get_gl_errors {
 	my $self= shift;
+	$self->display->flush_sync;
 	my (%errors, $e);
 	$errors{$e}= $_gl_err_msg{$e} || "(unrecognized) ".$e
 		# export glGetError ourselves to avoid depending on OpenGL module
