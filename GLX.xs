@@ -82,7 +82,7 @@ glXChooseVisual(dpy, screen=DefaultScreen(dpy), attrs=NULL)
 			vis_sv= sv_setref_pvn(newSV(0), "X11::Xlib::XVisualInfo", (void*)match, sizeof(XVisualInfo));
 			PUSHs(sv_2mortal(vis_sv));
 			XFree(match);
-			PerlXlib_set_displayobj_of_opaque(SvRV(vis_sv), dpy_sv);
+			PerlXlib_objref_set_display(vis_sv, dpy_sv);
 		}
 
 #ifdef GLX_VERSION_1_3
@@ -113,7 +113,7 @@ glXChooseFBConfig(dpy, screen, attr_av)
 		if (cfgs) {
 			EXTEND(SP, n_elem);
 			for (i= 0; i < n_elem; i++)
-				PUSHs(PerlXlib_obj_for_display_innerptr(dpy, cfgs[i], "X11::GLX::FBConfig", SVt_PVMG, 1));
+				PUSHs(PerlXlib_get_objref(cfgs[i], PerlXlib_AUTOCREATE, "GLXFBConfig", SVt_PVHV, "X11::GLX::FBConfig", dpy));
 			XFree(cfgs);
 		}
 
@@ -130,7 +130,7 @@ glXGetFBConfigs(dpy, screen= -1)
 		if (cfgs) {
 			EXTEND(SP, n_elem);
 			for (i= 0; i < n_elem; i++)
-				PUSHs(PerlXlib_obj_for_display_innerptr(dpy, cfgs[i], "X11::GLX::FBConfig", SVt_PVMG, 1));
+				PUSHs(PerlXlib_get_objref(cfgs[i], PerlXlib_AUTOCREATE, "GLXFBConfig", SVt_PVHV, "X11::GLX::FBConfig", dpy));
 			/* no indication in docs that we should free cfg ... */
 		}
 
@@ -163,51 +163,25 @@ glXGetVisualFromFBConfig(dpy, fbcfg)
 			vis_sv= sv_setref_pvn(newSV(0), "X11::Xlib::XVisualInfo", (void*) vis, sizeof(XVisualInfo));
 			PUSHs(sv_2mortal(vis_sv));
 			XFree(vis);
-			PerlXlib_set_displayobj_of_opaque(SvRV(vis_sv), dpy_sv);
+			PerlXlib_objref_set_display(vis_sv, dpy_sv);
 		}
 
-void
+GLXContext
 glXCreateNewContext(dpy, fbcfg, render_type, shared, direct)
 	Display *dpy
 	GLXFBConfig fbcfg
 	int render_type
 	GLXContextOrNull shared
 	Bool direct
-	INIT:
-		SV *cx_obj;
-	PPCODE:
-		GLXContext cx= glXCreateNewContext(dpy, fbcfg, render_type, shared, direct);
-		if (cx) {
-			cx_obj= PerlXlib_obj_for_display_innerptr(dpy, cx, "X11::GLX::Context", SVt_PVHV, 1);
-			PUSHs(cx_obj);
-			/* set autofree, by default */
-			hv_stores((HV*)SvRV(cx_obj), "autofree", newSViv(1));
-		}
-		else {
-			PUSHs(&PL_sv_undef);
-		}
 
 #endif /* GLX_VERSION_1_3 */
 
-void
+GLXContext
 glXCreateContext(dpy, vis_info, shared, direct)
 	Display *dpy
 	XVisualInfo *vis_info
 	GLXContextOrNull shared
 	Bool direct
-	INIT:
-		SV *cx_obj;
-	PPCODE:
-		GLXContext cx= glXCreateContext(dpy, vis_info, shared, direct);
-		if (cx) {
-			cx_obj= PerlXlib_obj_for_display_innerptr(dpy, cx, "X11::GLX::Context", SVt_PVHV, 1);
-			PUSHs(cx_obj);
-			/* set autofree, by default */
-			hv_stores((HV*)SvRV(cx_obj), "autofree", newSViv(1));
-		}
-		else {
-			PUSHs(&PL_sv_undef);
-		}
 
 void
 glXDestroyContext(dpy, cx)
@@ -218,7 +192,7 @@ glXDestroyContext(dpy, cx)
 	CODE:
 		glXDestroyContext(dpy, cx);
 		/* Now, null the pointer to mark it as being properly freed */
-		PerlXlib_set_magic_dpy_innerptr(cx_sv, NULL);
+		PerlXlib_objref_set_pointer(cx_sv, NULL, NULL);
 
 Bool
 glXMakeCurrent(dpy, xid= None, cx= NULL)
@@ -266,7 +240,7 @@ glXFreeContextEXT(dpy, cx)
 	CODE:
 		glXFreeContextEXT(dpy, cx);
 		/* Now, null the pointer to mark it as being properly freed */
-		PerlXlib_set_magic_dpy_innerptr(cx_sv, NULL);
+		PerlXlib_objref_set_pointer(cx_sv, NULL, NULL);
 
 int
 glXQueryContextInfoEXT(dpy, cx, attr_id, val_out_sv)
